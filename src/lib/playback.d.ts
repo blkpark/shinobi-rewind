@@ -1,0 +1,10 @@
+export type PlaybackSegment = { id: string; start: string; end: string; state: string };
+export type FocusState = { until: Record<string, number>; pulseUntil: Record<string, number> };
+export function segmentAt(segments: PlaybackSegment[], masterSeconds: number): PlaybackSegment | undefined;
+export function videoOffset(segment: PlaybackSegment | undefined, masterSeconds: number): number;
+export function driftCorrection(current: number, expected: number, tolerance?: number): number | null;
+export function nextSegment(segments: PlaybackSegment[], masterSeconds: number): PlaybackSegment | undefined;
+export function simultaneousFocus(events: { cameraId: string; at: string; end?: string }[], atSeconds: number, orderedIds: string[], previousSeconds?: number): string[];
+export function applyFocus(state: FocusState, ids: string[], now: number, hold?: number): FocusState;
+export function expireFocus(state: FocusState, now: number): FocusState;
+export function focusLayout(count: number): "focus-one" | "focus-two" | "focus-four" | "focus-six";

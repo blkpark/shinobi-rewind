@@ -1,0 +1,11 @@
+services:
+  shinobi-rewind:
+    build: .
+    env_file: .env
+    ports:
+      - "${SHINOBI_REWIND_BIND_IP:-127.0.0.1}:${SHINOBI_REWIND_PORT:-8092}:8080"
+    networks: [cctv]
+
+networks:
+  cctv:
+    external: true

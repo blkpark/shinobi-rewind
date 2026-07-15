@@ -1,0 +1,8 @@
+node_modules/
+.npm-cache/
+internal/rewind/web/dist/*
+!internal/rewind/web/dist/.keep
+.env
+shinobi-rewind
+.DS_Store
+.orca*
