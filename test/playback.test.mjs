@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, parseFavorites, pipMode, serializeFavorites, timelineDragTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -133,6 +133,26 @@ test("transport arrows ignore form fields and timeline drag maps one commit targ
   const inside = { ...outside, target: { closest: () => ({}) } };
   assert.equal(transportJump(outside), 5); assert.equal(transportJump({ ...outside, key: "ArrowLeft" }), -5); assert.equal(transportJump(inside), null);
   assert.equal(timelineDragTime(at("12:00:00"), 100, 1000, 3600), at("11:54:00"));
+  assert.equal(timelinePointTime(at("10:00:00"), 350, 100, 1000, 3600), at("10:15:00"));
+});
+
+test("favorite jumps preserve selection and restore an available camera scope", () => {
+  assert.deepEqual(includeCameraScope(["CAM-201"], "CAM-202", ["CAM-201", "CAM-202"]), ["CAM-201", "CAM-202"]);
+  assert.deepEqual(includeCameraScope(["CAM-201"], "missing", ["CAM-201"]), ["CAM-201"]);
+  assert.deepEqual(includeCameraScope(["1", "2", "3"], "4", ["1", "2", "3", "4"], 3), ["4", "1", "2"]);
+});
+
+test("URL time and custom rate drafts reject temporary or malformed values", () => {
+  assert.equal(parseKSTSecond("2026-07-16", "14:31:43"), at("14:31:43") + 86400);
+  assert.equal(parseKSTSecond("2026-07-16", ""), null);
+  assert.equal(parseKSTSecond("2026-02-30", "10:00"), null);
+  assert.equal(parseKSTSecond("2026-07-16", "25:00"), null);
+  assert.equal(parseRateDraft(""), null); assert.equal(parseRateDraft("oops"), null); assert.equal(parseRateDraft("1.23"), 1.25);
+});
+
+test("calendar month navigation clamps end-of-month dates", () => {
+  assert.equal(shiftMonth("2026-01-31", 1), "2026-02-28");
+  assert.equal(shiftMonth("2026-03-31", -1), "2026-02-28");
 });
 
 test("calendar states distinguish detector off, zero events, missing and partial data", () => {
@@ -152,6 +172,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
   const timeline = readFileSync(new URL("../src/components/Timeline.tsx", import.meta.url), "utf8");
+  const search = readFileSync(new URL("../src/components/SearchView.tsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
@@ -173,9 +194,13 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /compact-primary/);
   assert.match(timeline, /role="slider"[\s\S]*onPointerDown=.*onPointerMove=.*onPointerUp=.*onKeyDown=/);
   assert.match(timeline, /setPointerCapture/);
+  assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)\?\.getBoundingClientRect\(\)/);
   assert.match(timeline, /timelineDragTime/);
+  assert.match(timeline, /timelinePointTime/);
   assert.match(timeline, /fixed-playhead/);
   assert.match(timeline, /onSeek\(target\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);
   assert.match(timeline, /end: item\.end \|\| item\.at/);
+  assert.match(search, /goMonth\(-1\)[\s\S]*goMonth\(1\)[\s\S]*today/);
+  assert.match(search, /value="recorded">녹화 있음/);
 });

@@ -7,6 +7,23 @@ export function clampRate(value) {
   return Math.round(Math.max(minRate, Math.min(maxRate, parsed)) * 20) / 20;
 }
 
+export function parseRateDraft(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? clampRate(parsed) : null;
+}
+
+export function parseKSTSecond(day, clock) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || "");
+  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(clock || "");
+  if (!dateMatch || !timeMatch) return null;
+  const year = Number(dateMatch[1]), month = Number(dateMatch[2]), date = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]), minute = Number(timeMatch[2]), second = Number(timeMatch[3] || 0);
+  if (month < 1 || month > 12 || date < 1 || date > new Date(Date.UTC(year, month, 0)).getUTCDate() || hour > 23 || minute > 59 || second > 59) return null;
+  const value = Date.parse(`${day}T${clock.length === 5 ? `${clock}:00` : clock}+09:00`) / 1000;
+  return Number.isFinite(value) ? value : null;
+}
+
 export function parseFavorites(raw) {
   if (!raw) return [];
   try {
@@ -41,6 +58,25 @@ export function transportJump(event) {
 export function timelineDragTime(anchor, deltaPixels, width, span) {
   if (!Number.isFinite(width) || width <= 0) return anchor;
   return anchor - deltaPixels / width * span;
+}
+
+export function timelinePointTime(visibleStart, clientX, trackLeft, trackWidth, span) {
+  if (!Number.isFinite(trackWidth) || trackWidth <= 0) return visibleStart + span / 2;
+  return visibleStart + Math.max(0, Math.min(1, (clientX - trackLeft) / trackWidth)) * span;
+}
+
+export function includeCameraScope(selected, cameraId, available, max = 6) {
+  if (!cameraId || !available.includes(cameraId) || selected.includes(cameraId)) return selected;
+  return selected.length < max ? [...selected, cameraId] : [cameraId, ...selected.slice(0, max - 1)];
+}
+
+export function shiftMonth(day, amount) {
+  const parsed = parseKSTSecond(day, "00:00:00");
+  if (parsed === null) return day;
+  const [year, month, date] = day.split("-").map(Number);
+  const first = new Date(Date.UTC(year, month - 1 + amount, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(date, last)).padStart(2, "0")}`;
 }
 
 export function dayState({ loading, failed, capability, events }) {

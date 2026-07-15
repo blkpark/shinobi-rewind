@@ -1,7 +1,7 @@
 import { WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
-import { timelineDragTime, type Favorite } from "../lib/interaction.js";
+import { timelineDragTime, timelinePointTime, type Favorite } from "../lib/interaction.js";
 import type { Event, Segment } from "../lib/types";
 
 type Props = { day: string; segments: Segment[]; events: Event[]; favorites: Favorite[]; master: number; onSeek: (seconds: number) => void; onDay: (day: string) => void };
@@ -22,16 +22,16 @@ function Ranges({ items, kind, visibleStart, span }: { items: { id: string; star
 
 export function Timeline({ day, segments, events, favorites, master, onSeek, onDay }: Props) {
   const start = dayStart(day), end = start + 86400;
-  const [zoom, setZoom] = useState(0), [preview, setPreview] = useState<number | null>(null), [drag, setDrag] = useState<{ pointer: number; x: number; master: number } | null>(null);
+  const [zoom, setZoom] = useState(0), [preview, setPreview] = useState<number | null>(null), [drag, setDrag] = useState<{ pointer: number; x: number; anchor: number; width: number } | null>(null);
   const span = spans[zoom], shown = Math.max(start, Math.min(end, preview ?? master)), visibleStart = shown - span / 2;
   const ticks = Array.from({ length: 7 }, (_, index) => visibleStart + span * index / 6);
   const seekMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag || drag.pointer !== event.pointerId) return;
-    setPreview(Math.max(start, Math.min(end, timelineDragTime(drag.master, event.clientX - drag.x, event.currentTarget.clientWidth, span))));
+    setPreview(Math.max(start, Math.min(end, timelineDragTime(drag.anchor, event.clientX - drag.x, drag.width, span))));
   };
   const seekEnd = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag || drag.pointer !== event.pointerId) return;
-    const target = preview ?? drag.master;
+    const target = preview ?? drag.anchor;
     setDrag(null); setPreview(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     onSeek(target);
@@ -52,7 +52,7 @@ export function Timeline({ day, segments, events, favorites, master, onSeek, onD
   const changeDay = (amount: number) => onDay(new Date((start + amount * 86400) * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }));
   return <section className="timeline" aria-label="고정 재생헤드 타임라인">
     <header className="timeline-toolbar"><button onClick={() => changeDay(-1)}>‹ 전날</button><b>{day} · KST</b><button onClick={() => changeDay(1)}>다음날 ›</button><span /><small>휠로 확대·축소</small><button onClick={() => zoomBy(-1)} aria-label="타임라인 축소">−</button><select value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="타임라인 범위">{labels.map((label, index) => <option value={index} key={label}>{label}</option>)}</select><button onClick={() => zoomBy(1)} aria-label="타임라인 확대">＋</button></header>
-    <div className={`timeline-seek fixed ${drag ? "dragging" : ""}`} role="slider" tabIndex={0} aria-label="영상 시간" aria-valuemin={start} aria-valuemax={end} aria-valuenow={master} aria-valuetext={`${kstDay(shown)} ${clock(shown)} KST`} onWheel={wheel} onPointerDown={(event) => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); setDrag({ pointer: event.pointerId, x: event.clientX, master }); setPreview(master); }} onPointerMove={seekMove} onPointerUp={seekEnd} onPointerCancel={() => { setDrag(null); setPreview(null); }} onKeyDown={seekKey}>
+    <div className={`timeline-seek fixed ${drag ? "dragging" : ""}`} role="slider" tabIndex={0} aria-label="영상 시간" aria-valuemin={start} aria-valuemax={end} aria-valuenow={master} aria-valuetext={`${kstDay(shown)} ${clock(shown)} KST`} onWheel={wheel} onPointerDown={(event) => { if (event.button !== 0) return; const bounds = event.currentTarget.querySelector<HTMLElement>(".timeline-ranges")?.getBoundingClientRect(); if (!bounds) return; const anchor = Math.max(start, Math.min(end, timelinePointTime(visibleStart, event.clientX, bounds.left, bounds.width, span))); event.currentTarget.setPointerCapture(event.pointerId); setDrag({ pointer: event.pointerId, x: event.clientX, anchor, width: bounds.width }); setPreview(anchor); }} onPointerMove={seekMove} onPointerUp={seekEnd} onPointerCancel={() => { setDrag(null); setPreview(null); }} onKeyDown={seekKey}>
       <div className="timeline-axis">{ticks.map((tick) => <span className={kstDay(tick) !== day ? "boundary" : ""} key={tick}>{kstDay(tick) !== day ? `${kstDay(tick).slice(5)} ` : ""}{clock(tick).slice(0, 5)}</span>)}</div>
       {rows.map(([kind, label, items]) => <div className="timeline-row" key={kind}><span>{kind === "corrupt" ? <WarningCircle aria-hidden="true" /> : null}{label}</span><Ranges items={items} kind={kind} visibleStart={visibleStart} span={span} /></div>)}
       <span className="playhead fixed-playhead" style={{ "--playhead": .5 } as CSSProperties}><time>{kstDay(shown)} {clock(shown)}</time></span>
