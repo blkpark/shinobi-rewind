@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -120,6 +120,13 @@ test("favorites survive serialization and corrupt storage fails closed", () => {
   assert.deepEqual(parseFavorites(JSON.stringify([{ id: "bad", cameraId: 1, at: "never" }])), []);
 });
 
+test("throwing browser storage fails closed without breaking boot or writes", () => {
+  const denied = { getItem() { throw new DOMException("denied", "SecurityError"); }, setItem() { throw new DOMException("full", "QuotaExceededError"); } };
+  assert.equal(safeStorageGet(denied, "layout"), null);
+  assert.equal(safeStorageSet(denied, "favorite", "[]"), false);
+  assert.equal(safeStorageSet(null, "view", "control"), false);
+});
+
 test("audio ownership is exclusive and custom speeds use bounded 0.05 steps", () => {
   assert.equal(toggleAudible(null, "CAM-201", true), "CAM-201");
   assert.equal(toggleAudible("CAM-201", "CAM-202", true), "CAM-202");
@@ -168,6 +175,23 @@ test("PiP capability keeps fullscreen and unavailable fallbacks honest", () => {
   assert.equal(pipMode(false, true), "unavailable");
 });
 
+test("display requests report actual resolve and rejection outcomes", async () => {
+  const messages = [];
+  assert.equal(await reportDisplayRequest(() => Promise.resolve(), "opened", "blocked", (message) => messages.push(message)), true);
+  assert.equal(await reportDisplayRequest(() => Promise.reject(new Error("denied")), "opened", "blocked", (message) => messages.push(message)), false);
+  assert.deepEqual(messages, ["opened", "blocked"]);
+});
+
+test("timeline favorites include only global and selected-camera marks on the KST day", () => {
+  const favorites = [
+    { id: "global", cameraId: null, at: "2026-07-15T05:00:00Z" },
+    { id: "selected", cameraId: "CAM-201", at: "2026-07-15T06:00:00Z" },
+    { id: "hidden-camera", cameraId: "CAM-202", at: "2026-07-15T07:00:00Z" },
+    { id: "hidden-day", cameraId: null, at: "2026-07-14T05:00:00Z" },
+  ];
+  assert.deepEqual(filterTimelineFavorites(favorites, ["CAM-201"], "2026-07-15").map((item) => item.id), ["global", "selected"]);
+});
+
 test("player and timeline keep bounded recovery, fullscreen, and drag wiring", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
@@ -187,7 +211,10 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
   assert.match(grid, /requestFullscreen/);
-  assert.match(grid, /pictureInPictureEnabled[\s\S]*requestPictureInPicture[\s\S]*requestFullscreen/);
+  assert.match(grid, /pictureInPictureEnabled/);
+  assert.match(grid, /requestPictureInPicture/);
+  assert.match(grid, /requestFullscreen/);
+  assert.match(grid, /reportDisplayRequest/);
   assert.match(grid, /className="camera-actions"[\s\S]*현재 시각 즐겨찾기[\s\S]*소리[\s\S]*PiP[\s\S]*전체화면/);
   assert.match(styles, /\.supporting-camera header \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto; grid-template-rows: 22px 26px/);
   assert.match(grid, /ResizeObserver/);
@@ -197,6 +224,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)\?\.getBoundingClientRect\(\)/);
   assert.match(timeline, /timelineDragTime/);
   assert.match(timeline, /timelinePointTime/);
+  assert.match(timeline, /filterTimelineFavorites\(favorites, selectedCameraIds, day\)/);
   assert.match(timeline, /fixed-playhead/);
   assert.match(timeline, /onSeek\(target\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);

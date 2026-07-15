@@ -1,4 +1,8 @@
 export type Favorite = { id: string; cameraId: string | null; at: string; label?: string };
+export type StorageLike = { getItem(key: string): string | null; setItem(key: string, value: string): void };
+export function safeStorageGet(storage: StorageLike | null, key: string): string | null;
+export function safeStorageSet(storage: StorageLike | null, key: string, value: string): boolean;
+export function reportDisplayRequest(request: () => Promise<unknown>, success: string, failure: string, report: (message: string) => void): Promise<boolean>;
 export function clampRate(value: unknown): number;
 export function parseRateDraft(value: string): number | null;
 export function parseKSTSecond(day: string, clock: string): number | null;
@@ -11,5 +15,6 @@ export function timelineDragTime(anchor: number, deltaPixels: number, width: num
 export function timelinePointTime(visibleStart: number, clientX: number, trackLeft: number, trackWidth: number, span: number): number;
 export function includeCameraScope(selected: string[], cameraId: string | null, available: string[], max?: number): string[];
 export function shiftMonth(day: string, amount: number): string;
+export function filterTimelineFavorites(items: Favorite[], cameraIds: string[], day: string): Favorite[];
 export function dayState(input: { loading: boolean; failed: "none" | "partial" | "all"; capability: string; events: number }): "loading" | "no_data" | "partial" | "detector_off" | "events" | "zero_events";
 export function pipMode(hasVideo: boolean, nativeSupported: boolean): "unavailable" | "pip" | "fullscreen";
