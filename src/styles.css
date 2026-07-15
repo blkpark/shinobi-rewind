@@ -52,9 +52,18 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .layout-resizer { position: absolute; z-index: 4; top: 0; bottom: 0; left: var(--primary-width); width: 12px; padding: 0; border: 0; background: transparent; cursor: col-resize; touch-action: none; transform: translateX(-2px); }
 .layout-resizer span { position: absolute; top: 42%; bottom: 42%; left: 4px; width: 3px; min-height: 32px; border-radius: 3px; background: #5e7890; transition: background .12s ease, box-shadow .12s ease; }
 .layout-resizer:hover span, .layout-resizer:focus-visible span, .layout-resizer.resizing span { background: #79adff; box-shadow: 0 0 0 3px #1766ce55; }
-.camera-card header { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px; background: #081722; }
+.camera-card header { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 3px 8px; background: #081722; }
+.camera-identity, .camera-actions { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.camera-identity b, .camera-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.camera-actions { flex: 0 0 auto; }
 .camera-card header small, .camera-card header time { color: #a7bbc9; font-size: 11px; }
 .camera-card header time { margin-left: auto; }
+.supporting-camera { grid-template-rows: 54px minmax(0, 1fr); }
+.supporting-camera header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 22px 26px; gap: 0 5px; padding: 2px 5px; }
+.supporting-camera header time { grid-column: 2; grid-row: 1; margin: 0; }
+.supporting-camera .camera-actions { grid-column: 1 / -1; grid-row: 2; justify-self: end; gap: 4px; }
+.supporting-camera .camera-identity { gap: 5px; }
+.supporting-camera .camera-identity small { max-width: 72px; }
 .fullscreen-button { display: grid; flex: 0 0 auto; place-items: center; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #afc2cf; }
 .fullscreen-button:hover { background: #173146; color: #fff; }
 .camera-action { display: grid; flex: 0 0 auto; place-items: center; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #afc2cf; }
