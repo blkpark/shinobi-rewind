@@ -13,6 +13,7 @@ type Segment struct {
 	Start    time.Time `json:"start"`
 	End      time.Time `json:"end"`
 	State    string    `json:"state"` // recorded, gap, corrupt
+	HasAudio *bool     `json:"hasAudio"`
 	Source   string    `json:"-"`
 }
 type Event struct {

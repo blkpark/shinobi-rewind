@@ -128,10 +128,43 @@ func detectorEnabled(raw json.RawMessage) bool {
 }
 
 type shinobiVideo struct {
-	MID      string `json:"mid"`
-	Time     string `json:"time"`
-	End      string `json:"end"`
-	Filename string `json:"filename"`
+	MID      string          `json:"mid"`
+	Time     string          `json:"time"`
+	End      string          `json:"end"`
+	Filename string          `json:"filename"`
+	Details  json.RawMessage `json:"details"`
+}
+
+func explicitAudio(raw json.RawMessage) *bool {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil
+	}
+	var details map[string]any
+	if err := json.Unmarshal(raw, &details); err != nil {
+		var encoded string
+		if json.Unmarshal(raw, &encoded) != nil || json.Unmarshal([]byte(encoded), &details) != nil {
+			return nil
+		}
+	}
+	for _, key := range []string{"hasAudio", "has_audio", "audio"} {
+		if value, ok := details[key]; ok {
+			switch strings.ToLower(fmt.Sprint(value)) {
+			case "true", "1", "yes", "on":
+				result := true
+				return &result
+			case "false", "0", "no", "off", "none":
+				result := false
+				return &result
+			}
+		}
+	}
+	for _, key := range []string{"audioCodec", "audio_codec", "codec_audio"} {
+		if value, ok := details[key]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
+			result := !strings.EqualFold(strings.TrimSpace(fmt.Sprint(value)), "none")
+			return &result
+		}
+	}
+	return nil
 }
 
 func (s *ShinobiSource) Timeline(ctx context.Context, day time.Time, camera string) (Timeline, error) {
@@ -191,7 +224,7 @@ func (s *ShinobiSource) normalizedSegments(camera string, day time.Time, videos 
 		if end.After(endOfDay) {
 			end = endOfDay
 		}
-		items = append(items, Segment{ID: id, CameraID: camera, Start: start, End: end, State: state, Source: s.endpoint("videos", camera, nil) + "/" + url.PathEscape(video.Filename)})
+		items = append(items, Segment{ID: id, CameraID: camera, Start: start, End: end, State: state, HasAudio: explicitAudio(video.Details), Source: s.endpoint("videos", camera, nil) + "/" + url.PathEscape(video.Filename)})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if !items[i].Start.Equal(items[j].Start) {

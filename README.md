@@ -14,6 +14,10 @@ The included Compose example joins an existing `cctv` Docker network and binds t
 
 `GET /api/v1/capabilities`, `/cameras`, `/timeline?date=YYYY-MM-DD&camera=...`, `/events?from=RFC3339&to=RFC3339&camera=...`, and `GET|HEAD /api/v1/videos/{opaqueId}`. Video proxying forwards HTTP ranges without buffering; gap, corrupt, malformed, and unplayable segments return a safe error.
 
+Timeline segments expose `hasAudio` as `true`, `false`, or `null`. Only explicit Shinobi video metadata becomes true/false; missing or ambiguous metadata stays null rather than being guessed. The browser keeps at most one audible camera and mutes audio above 4x.
+
+The control view keeps one active video per camera, supports native PiP with fullscreen fallback, 0.25x–5x custom speed, fixed-playhead drag/zoom, ±5 second arrow-key jumps, and absolute-KST local favorites. Incident search drills from month to week to day and keeps detector-off, zero-event, no-data, and partial failures distinct.
+
 ## Checks
 
 Run `make fmt test lint typecheck build`. The frontend uses only React/Vite/TypeScript; backend uses Go standard library.

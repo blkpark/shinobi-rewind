@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
+import { clampRate, dayState, parseFavorites, pipMode, serializeFavorites, timelineDragTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -112,6 +113,41 @@ test("falls back to available cameras when saved IDs are stale", () => {
   assert.deepEqual(resolveCameraSelection(cameras, ["opaque-202", "CAM-201"]), ["opaque-202"]);
 });
 
+test("favorites survive serialization and corrupt storage fails closed", () => {
+  const favorite = { id: "CAM-201:now", cameraId: "CAM-201", at: "2026-07-16T05:31:43.000Z" };
+  assert.deepEqual(parseFavorites(serializeFavorites([favorite])), [favorite]);
+  assert.deepEqual(parseFavorites("not-json"), []);
+  assert.deepEqual(parseFavorites(JSON.stringify([{ id: "bad", cameraId: 1, at: "never" }])), []);
+});
+
+test("audio ownership is exclusive and custom speeds use bounded 0.05 steps", () => {
+  assert.equal(toggleAudible(null, "CAM-201", true), "CAM-201");
+  assert.equal(toggleAudible("CAM-201", "CAM-202", true), "CAM-202");
+  assert.equal(toggleAudible("CAM-202", "CAM-201", null), "CAM-202");
+  assert.equal(toggleAudible("CAM-202", "CAM-202", true), null);
+  assert.equal(clampRate(.1), .25); assert.equal(clampRate(5.2), 5); assert.equal(clampRate(1.234), 1.25);
+});
+
+test("transport arrows ignore form fields and timeline drag maps one commit target", () => {
+  const outside = { key: "ArrowRight", altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, target: { closest: () => null } };
+  const inside = { ...outside, target: { closest: () => ({}) } };
+  assert.equal(transportJump(outside), 5); assert.equal(transportJump({ ...outside, key: "ArrowLeft" }), -5); assert.equal(transportJump(inside), null);
+  assert.equal(timelineDragTime(at("12:00:00"), 100, 1000, 3600), at("11:54:00"));
+});
+
+test("calendar states distinguish detector off, zero events, missing and partial data", () => {
+  assert.equal(dayState({ loading: false, failed: "none", capability: "detector_off", events: 0 }), "detector_off");
+  assert.equal(dayState({ loading: false, failed: "none", capability: "available", events: 0 }), "zero_events");
+  assert.equal(dayState({ loading: false, failed: "all", capability: "available", events: 0 }), "no_data");
+  assert.equal(dayState({ loading: false, failed: "partial", capability: "available", events: 3 }), "partial");
+});
+
+test("PiP capability keeps fullscreen and unavailable fallbacks honest", () => {
+  assert.equal(pipMode(true, true), "pip");
+  assert.equal(pipMode(true, false), "fullscreen");
+  assert.equal(pipMode(false, true), "unavailable");
+});
+
 test("player and timeline keep bounded recovery, fullscreen, and drag wiring", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
@@ -129,10 +165,14 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
   assert.match(grid, /requestFullscreen/);
+  assert.match(grid, /pictureInPictureEnabled[\s\S]*requestPictureInPicture[\s\S]*requestFullscreen/);
   assert.match(grid, /ResizeObserver/);
   assert.match(grid, /compact-primary/);
   assert.match(timeline, /role="slider"[\s\S]*onPointerDown=.*onPointerMove=.*onPointerUp=.*onKeyDown=/);
-  assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)/);
+  assert.match(timeline, /setPointerCapture/);
+  assert.match(timeline, /timelineDragTime/);
+  assert.match(timeline, /fixed-playhead/);
+  assert.match(timeline, /onSeek\(target\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);
-  assert.match(timeline, /end: event\.end \|\| event\.at/);
+  assert.match(timeline, /end: item\.end \|\| item\.at/);
 });

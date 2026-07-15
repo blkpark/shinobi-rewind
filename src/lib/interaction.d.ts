@@ -1,0 +1,10 @@
+export type Favorite = { id: string; cameraId: string | null; at: string; label?: string };
+export function clampRate(value: unknown): number;
+export function parseFavorites(raw: string | null): Favorite[];
+export function serializeFavorites(items: Favorite[]): string;
+export function toggleAudible(current: string | null, cameraId: string, hasAudio: boolean | null): string | null;
+export function isFormTarget(target: Element | null): boolean;
+export function transportJump(event: KeyboardEvent): number | null;
+export function timelineDragTime(anchor: number, deltaPixels: number, width: number, span: number): number;
+export function dayState(input: { loading: boolean; failed: "none" | "partial" | "all"; capability: string; events: number }): "loading" | "no_data" | "partial" | "detector_off" | "events" | "zero_events";
+export function pipMode(hasVideo: boolean, nativeSupported: boolean): "unavailable" | "pip" | "fullscreen";

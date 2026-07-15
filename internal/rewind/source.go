@@ -34,10 +34,18 @@ func NewDemoSource() Source {
 				state = "corrupt"
 			}
 			key := fmt.Sprintf("d-%d-%d", n, i)
-			items[key] = Segment{ID: key, CameraID: id, Start: start, End: start.Add(95 * time.Minute), State: state}
+			items[key] = Segment{ID: key, CameraID: id, Start: start, End: start.Add(95 * time.Minute), State: state, HasAudio: demoAudio(id)}
 		}
 	}
 	return &demoSource{segments: items}
+}
+
+func demoAudio(camera string) *bool {
+	if camera == "CAM-201" || camera == "CAM-202" {
+		value := camera == "CAM-201"
+		return &value
+	}
+	return nil
 }
 func (d *demoSource) Cameras(context.Context) ([]Camera, error) {
 	return []Camera{{"CAM-201", "하역장", false}, {"CAM-202", "서문", false}, {"CAM-203", "포장 라인", false}, {"CAM-204", "창고 A", false}, {"CAM-205", "창고 B", false}, {"CAM-206", "후문", false}}, nil
