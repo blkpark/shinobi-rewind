@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle } from "../src/lib/camera.js";
-import { applyFocus, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
+import { applyFocus, canCorrectMedia, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -22,6 +22,14 @@ test("corrects only drift over 500ms and rolls to the next recording", () => {
   assert.equal(driftCorrection(5.0, 5.6), 5.6);
   assert.equal(nextSegment(segments, at("00:20:00"))?.id, undefined);
   assert.equal(nextSegment(segments, at("00:09:59"))?.id, "b");
+});
+
+test("never corrects a stale or currently seeking media element", () => {
+  assert.equal(canCorrectMedia("new", "old", false, 4), false);
+  assert.equal(canCorrectMedia("new", "new", true, 4), false);
+  assert.equal(canCorrectMedia("new", "new", false, 0), false);
+  assert.equal(canCorrectMedia("new", "new", false, 1), false);
+  assert.equal(canCorrectMedia("new", "new", false, 2), true);
 });
 
 test("derives master time from monotonic elapsed time at every playback rate", () => {
@@ -94,7 +102,11 @@ test("player and timeline keep recovery, preload, fullscreen, and drag wiring", 
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
   const timeline = readFileSync(new URL("../src/components/Timeline.tsx", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
+  assert.match(app, /setPrimarySyncing\(true\)/);
+  assert.match(app, /effectivePlaying = playing && !primarySyncing/);
   assert.match(grid, /nextSegment\(cameraSegments/);
+  assert.match(grid, /data-segment-id=\{slot\.id\}/);
+  assert.match(grid, /동기화 지연[\s\S]*다시 요청/);
   assert.match(grid, /slots\.map[\s\S]*onCanPlay/);
   assert.match(grid, /seekRevision[\s\S]*setRetry/);
   assert.match(grid, /slotFailed[\s\S]*onReady\(camera, video\)/);

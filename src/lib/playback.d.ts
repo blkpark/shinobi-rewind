@@ -3,6 +3,7 @@ export type FocusState = { until: Record<string, number>; pulseUntil: Record<str
 export function segmentAt(segments: PlaybackSegment[], masterSeconds: number): PlaybackSegment | undefined;
 export function videoOffset(segment: PlaybackSegment | undefined, masterSeconds: number): number;
 export function driftCorrection(current: number, expected: number, tolerance?: number): number | null;
+export function canCorrectMedia(targetSegmentId: string, mediaSegmentId: string | undefined, seeking: boolean, readyState: number): boolean;
 export function monotonicMaster(anchorMaster: number, anchorWall: number, rate: number, now: number): number;
 export function nextSegment(segments: PlaybackSegment[], masterSeconds: number): PlaybackSegment | undefined;
 export function simultaneousFocus(events: { cameraId: string; at: string; end?: string }[], atSeconds: number, orderedIds: string[], previousSeconds?: number): string[];
