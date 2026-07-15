@@ -63,5 +63,5 @@ export function focusLayout(count) {
 }
 
 export function compactPrimaryLayout(width, height) {
-  return height > 0 && width / height < 2.8;
+  return width > 980 && height > 0 && width / height < 2.8;
 }

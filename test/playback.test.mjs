@@ -66,6 +66,7 @@ test("simultaneous events use stable camera order for one, two, and six cameras"
 test("packs the primary and five supporting cameras when the grid is not ultra-wide", () => {
   assert.equal(compactPrimaryLayout(2048, 854), true);
   assert.equal(compactPrimaryLayout(1682, 428), false);
+  assert.equal(compactPrimaryLayout(667, 916), false);
 });
 
 test("OFF keeps focus empty and repeat triggers only extend the finite hold", () => {
