@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
-import { applyFocus, canCorrectMedia, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
+import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -63,6 +63,11 @@ test("simultaneous events use stable camera order for one, two, and six cameras"
   assert.equal(focusLayout(1), "focus-one"); assert.equal(focusLayout(2), "focus-two"); assert.equal(focusLayout(6), "focus-six");
 });
 
+test("packs the primary and five supporting cameras when the grid is not ultra-wide", () => {
+  assert.equal(compactPrimaryLayout(2048, 854), true);
+  assert.equal(compactPrimaryLayout(1682, 428), false);
+});
+
 test("OFF keeps focus empty and repeat triggers only extend the finite hold", () => {
   const first = applyFocus({ until: {}, pulseUntil: {} }, ["CAM-202"], 100);
   const repeated = applyFocus(first, ["CAM-202"], 101);
@@ -121,6 +126,8 @@ test("player and timeline keep recovery, preload, fullscreen, and drag wiring", 
   assert.match(grid, /slotFailed[\s\S]*onReady\(camera, video\)/);
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
   assert.match(grid, /requestFullscreen/);
+  assert.match(grid, /ResizeObserver/);
+  assert.match(grid, /compact-primary/);
   assert.match(timeline, /role="slider"[\s\S]*onPointerDown=.*onPointerMove=.*onPointerUp=.*onKeyDown=/);
   assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);

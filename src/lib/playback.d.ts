@@ -10,3 +10,4 @@ export function simultaneousFocus(events: { cameraId: string; at: string; end?: 
 export function applyFocus(state: FocusState, ids: string[], now: number, hold?: number): FocusState;
 export function expireFocus(state: FocusState, now: number): FocusState;
 export function focusLayout(count: number): "focus-one" | "focus-two" | "focus-four" | "focus-six";
+export function compactPrimaryLayout(width: number, height: number): boolean;

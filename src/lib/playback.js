@@ -61,3 +61,7 @@ export function focusLayout(count) {
   if (count <= 4) return "focus-four";
   return "focus-six";
 }
+
+export function compactPrimaryLayout(width, height) {
+  return height > 0 && width / height < 2.8;
+}

@@ -17,3 +17,4 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep one next recording prepared per camera and promote that prepared player at a real segment boundary to avoid a blank flash.
 - The default desktop layout keeps the primary camera about twice the width and height of a supporting camera. Operators can resize the primary/support split, and that split plus the chosen primary camera persist locally; transient motion focus never overwrites the saved layout.
 - During an explicit seek, hold the master clock until the primary camera is ready, then resume the existing playback intent and rate. Late media events from an older segment must not change the current target state.
+- Preserve the full CCTV frame with `object-fit: contain`. When the camera grid is not wide enough for the split layout, pack the primary as 2x2 in a 3x3 grid and fill the remaining five cells instead of leaving an empty tile or cropping video.

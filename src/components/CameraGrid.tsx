@@ -2,7 +2,7 @@ import { ArrowsOut, Camera as CameraIcon, VideoCameraSlash } from "@phosphor-ico
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cameraLabel } from "../lib/camera.js";
-import { focusLayout, nextSegment, segmentAt, videoOffset } from "../lib/playback.js";
+import { compactPrimaryLayout, focusLayout, nextSegment, segmentAt, videoOffset } from "../lib/playback.js";
 import type { Camera, Capability, Segment } from "../lib/types";
 
 type Props = {
@@ -17,6 +17,7 @@ type Slot = Segment | undefined;
 export function CameraGrid({ cameras, segments, timelineLoading, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, seekRevision, videos, onReady }: Props) {
   const grid = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
+  const [compact, setCompact] = useState(false);
   const ordered = useMemo(() => {
     const primary = cameras.find((camera) => camera.id === primaryCamera) || cameras[0];
     if (!primary) return [];
@@ -28,14 +29,29 @@ export function CameraGrid({ cameras, segments, timelineLoading, timelineFailed,
     const bounds = grid.current?.getBoundingClientRect();
     if (bounds) onPrimaryRatio(Math.max(25, Math.min(60, ((clientX - bounds.left) / bounds.width) * 100)));
   };
-  return <div ref={grid} className={`camera-grid ${focused.length > 1 ? focusLayout(focused.length) : "primary-layout"}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
+
+  useEffect(() => {
+    const element = grid.current;
+    if (!element) return;
+    const update = () => {
+      const bounds = element.getBoundingClientRect();
+      setCompact(compactPrimaryLayout(bounds.width, bounds.height));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const layout = focused.length > 1 ? focusLayout(focused.length) : compact ? "compact-primary" : "primary-layout";
+  return <div ref={grid} className={`camera-grid ${layout}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
     {ordered.map((camera, index) => <CameraTile key={camera.id} {...{
       camera, cameraSegments: segments.filter((item) => item.cameraId === camera.id), master, capability,
       timelineLoading, timelineFailed: timelineFailed.includes(camera.id),
       focused: focused.includes(camera.id), pulse: pulses[camera.id] > Date.now(), primary: index === 0,
       seekRevision, videos, onReady, onPrimary, onPrimarySyncing,
     }} />)}
-    {focused.length <= 1 && ordered.length > 1 && <div className={`layout-resizer ${resizing ? "resizing" : ""}`} role="separator" aria-label="주 화면 크기 조절" aria-orientation="vertical" aria-valuemin={25} aria-valuemax={60} aria-valuenow={Math.round(primaryRatio)} tabIndex={0} title="드래그하여 주 화면 크기 조절 · 자동 저장" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); resize(event.clientX); }} onPointerMove={(event) => { if (resizing) resize(event.clientX); }} onPointerUp={(event) => { resize(event.clientX); setResizing(false); }} onPointerCancel={() => setResizing(false)} onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); onPrimaryRatio(Math.max(25, Math.min(60, primaryRatio + (event.key === "ArrowLeft" ? -2 : 2)))); } }}><span /></div>}
+    {layout === "primary-layout" && ordered.length > 1 && <div className={`layout-resizer ${resizing ? "resizing" : ""}`} role="separator" aria-label="주 화면 크기 조절" aria-orientation="vertical" aria-valuemin={25} aria-valuemax={60} aria-valuenow={Math.round(primaryRatio)} tabIndex={0} title="드래그하여 주 화면 크기 조절 · 자동 저장" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); resize(event.clientX); }} onPointerMove={(event) => { if (resizing) resize(event.clientX); }} onPointerUp={(event) => { resize(event.clientX); setResizing(false); }} onPointerCancel={() => setResizing(false)} onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); onPrimaryRatio(Math.max(25, Math.min(60, primaryRatio + (event.key === "ArrowLeft" ? -2 : 2)))); } }}><span /></div>}
     {ordered.length === 0 && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" />카메라를 선택하세요.</div>}
   </div>;
 }

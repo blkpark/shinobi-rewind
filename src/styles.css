@@ -45,6 +45,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .camera-grid.primary-layout { grid-template-columns: minmax(260px, var(--primary-width)) repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .camera-card { position: relative; display: grid; min-width: 0; min-height: 0; grid-template-rows: 32px minmax(0, 1fr); overflow: hidden; border: 1px solid #29475a; border-radius: 6px; background: #0a1925; }
 .primary-layout .camera-card.primary-camera { grid-column: 1; grid-row: 1 / span 2; }
+.primary-layout .camera-card.supporting-camera:last-of-type { grid-column: span 2; }
+.camera-grid.compact-primary { grid-auto-flow: dense; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+.compact-primary .camera-card.primary-camera { grid-column: 1 / span 2; grid-row: 1 / span 2; }
 .layout-resizer { position: absolute; z-index: 4; top: 0; bottom: 0; left: var(--primary-width); width: 12px; padding: 0; border: 0; background: transparent; cursor: col-resize; touch-action: none; transform: translateX(-2px); }
 .layout-resizer span { position: absolute; top: 42%; bottom: 42%; left: 4px; width: 3px; min-height: 32px; border-radius: 3px; background: #5e7890; transition: background .12s ease, box-shadow .12s ease; }
 .layout-resizer:hover span, .layout-resizer:focus-visible span, .layout-resizer.resizing span { background: #79adff; box-shadow: 0 0 0 3px #1766ce55; }
