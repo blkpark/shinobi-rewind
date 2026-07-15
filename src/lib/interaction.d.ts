@@ -1,10 +1,15 @@
 export type Favorite = { id: string; cameraId: string | null; at: string; label?: string };
 export function clampRate(value: unknown): number;
+export function parseRateDraft(value: string): number | null;
+export function parseKSTSecond(day: string, clock: string): number | null;
 export function parseFavorites(raw: string | null): Favorite[];
 export function serializeFavorites(items: Favorite[]): string;
 export function toggleAudible(current: string | null, cameraId: string, hasAudio: boolean | null): string | null;
 export function isFormTarget(target: Element | null): boolean;
 export function transportJump(event: KeyboardEvent): number | null;
 export function timelineDragTime(anchor: number, deltaPixels: number, width: number, span: number): number;
+export function timelinePointTime(visibleStart: number, clientX: number, trackLeft: number, trackWidth: number, span: number): number;
+export function includeCameraScope(selected: string[], cameraId: string | null, available: string[], max?: number): string[];
+export function shiftMonth(day: string, amount: number): string;
 export function dayState(input: { loading: boolean; failed: "none" | "partial" | "all"; capability: string; events: number }): "loading" | "no_data" | "partial" | "detector_off" | "events" | "zero_events";
 export function pipMode(hasVideo: boolean, nativeSupported: boolean): "unavailable" | "pip" | "fullscreen";
