@@ -36,6 +36,22 @@ func newTestService(segment Segment) *Service {
 	return NewService(Config{HeaderTimeout: time.Second}, testSource{segment: segment, cameras: []Camera{{ID: "CAM-1"}}})
 }
 
+func TestDroppingOldTimelineKeepsNewerSegmentIndex(t *testing.T) {
+	segment := Segment{ID: "shared", State: "recorded"}
+	old := cachedTimeline{until: time.Now().Add(time.Minute), data: Timeline{Segments: []Segment{segment}}}
+	newer := cachedTimeline{until: old.until.Add(time.Minute), data: Timeline{Segments: []Segment{segment}}}
+	source := &ShinobiSource{
+		segments:    map[string]Segment{},
+		indexExpiry: map[string]time.Time{},
+		timelines:   map[string]cachedTimeline{"old": old, "new": newer},
+	}
+	source.indexTimeline(newer)
+	source.dropTimeline("old", old)
+	if _, ok := source.Segment(segment.ID); !ok {
+		t.Fatal("newer timeline segment was removed with the old cache entry")
+	}
+}
+
 func TestVideoProxyForwardsRangeIfRangeAndStreamingStatus(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Range"); got != "bytes=2-4" {

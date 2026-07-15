@@ -112,19 +112,21 @@ test("falls back to available cameras when saved IDs are stale", () => {
   assert.deepEqual(resolveCameraSelection(cameras, ["opaque-202", "CAM-201"]), ["opaque-202"]);
 });
 
-test("player and timeline keep recovery, preload, fullscreen, and drag wiring", () => {
+test("player and timeline keep bounded recovery, fullscreen, and drag wiring", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
   const timeline = readFileSync(new URL("../src/components/Timeline.tsx", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
   assert.match(app, /effectivePlaying = playing && !primarySyncing/);
-  assert.match(grid, /nextSegment\(cameraSegments/);
-  assert.match(grid, /data-segment-id=\{slot\.id\}/);
+  assert.equal(grid.match(/<video /g)?.length, 1);
+  assert.match(grid, /data-segment-id=\{target\.id\}/);
+  assert.match(grid, /method: "HEAD"[\s\S]*response\.status === 404[\s\S]*onMediaMissing/);
+  assert.match(app, /mediaRecovery\.current[\s\S]*setTimelineRevision/);
   assert.match(grid, /동기화 지연[\s\S]*다시 요청/);
-  assert.match(grid, /slots\.map[\s\S]*onCanPlay/);
-  assert.match(grid, /seekRevision[\s\S]*setRetry/);
-  assert.match(grid, /slotFailed[\s\S]*onReady\(camera, video\)/);
+  assert.match(grid, /key=\{`\$\{target\.id\}:\$\{seekRevision\}:\$\{retry\}`\}/);
+  assert.match(grid, /removeAttribute\("src"\)[\s\S]*video\.load\(\)/);
+  assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
   assert.match(grid, /requestFullscreen/);
   assert.match(grid, /ResizeObserver/);

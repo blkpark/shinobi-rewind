@@ -140,6 +140,7 @@ func (s *ShinobiSource) Timeline(ctx context.Context, day time.Time, camera stri
 	entry, ok := s.timelines[key]
 	s.mu.RUnlock()
 	if ok && time.Now().Before(entry.until) {
+		s.indexTimeline(entry)
 		return entry.data, nil
 	}
 	end := day.AddDate(0, 0, 1)
@@ -249,11 +250,21 @@ func (s *ShinobiSource) storeTimeline(key string, timeline Timeline) {
 	}
 }
 
+func (s *ShinobiSource) indexTimeline(entry cachedTimeline) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, segment := range entry.data.Segments {
+		s.segments[segment.ID], s.indexExpiry[segment.ID] = segment, entry.until
+	}
+}
+
 func (s *ShinobiSource) dropTimeline(key string, entry cachedTimeline) {
 	delete(s.timelines, key)
 	for _, segment := range entry.data.Segments {
-		delete(s.segments, segment.ID)
-		delete(s.indexExpiry, segment.ID)
+		if expiry, ok := s.indexExpiry[segment.ID]; ok && !expiry.After(entry.until) {
+			delete(s.segments, segment.ID)
+			delete(s.indexExpiry, segment.ID)
+		}
 	}
 }
 

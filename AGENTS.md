@@ -14,7 +14,7 @@ When implementing from a selected generated mock, treat that image as the source
 - On desktop, the primary camera, the other five synchronized cameras, timeline, and transport must fit in one viewport. Clicking a supporting camera swaps it with the primary camera.
 - Every camera card has a native fullscreen action. Timeline seeking must provide immediate drag/click time feedback and remain keyboard operable.
 - A transient media failure must recover on retry or a later seek; it must not poison a segment for the lifetime of the view.
-- Keep one next recording prepared per camera and promote that prepared player at a real segment boundary to avoid a blank flash.
+- On the plain HTTP/1 internal deployment, keep one active player per camera and release its previous `src` on seek or segment change. Reintroduce prepared next-recording playback only with HTTP/2 or MediaSource so preloading cannot starve seek requests.
 - The default desktop layout keeps the primary camera about twice the width and height of a supporting camera. Operators can resize the primary/support split, and that split plus the chosen primary camera persist locally; transient motion focus never overwrites the saved layout.
 - During an explicit seek, hold the master clock until the primary camera is ready, then resume the existing playback intent and rate. Late media events from an older segment must not change the current target state.
 - Preserve the full CCTV frame with `object-fit: contain`. When the camera grid is not wide enough for the split layout, pack the primary as 2x2 in a 3x3 grid and fill the remaining five cells instead of leaving an empty tile or cropping video.
