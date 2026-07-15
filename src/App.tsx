@@ -60,7 +60,9 @@ export function App() {
   const [primaryRatio, setPrimaryRatio] = useState(initial.layout?.primaryRatio || defaultPrimaryRatio);
   const [primarySyncing, setPrimarySyncing] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
+  const [timelineRevision, setTimelineRevision] = useState(0);
   const videos = useRef<Record<string, HTMLVideoElement>>({});
+	const mediaRecovery = useRef(false);
 	const masterRef = useRef(initial.master);
 	const focusMasterRef = useRef(initial.master);
 	const clockRef = useRef({ master: initial.master, wall: performance.now() });
@@ -125,9 +127,13 @@ export function App() {
       setSegments(results.flatMap((result) => result.status === "fulfilled" ? result.value.segments : []));
       setTimelineFailed(results.flatMap((result, index) => result.status === "rejected" ? [selected[index]] : []));
       setTimelineLoading(false);
+      if (mediaRecovery.current) {
+        mediaRecovery.current = false;
+        setSeekRevision((value) => value + 1);
+      }
     });
     return () => { current = false; };
-  }, [date, selected]);
+  }, [date, selected, timelineRevision]);
 
   useEffect(() => {
     if (capability.motion !== "available" || !selected.length) { setEvents([]); setEventState("idle"); return; }
@@ -216,6 +222,11 @@ export function App() {
     const target = direction === 1 ? events.find((event) => Date.parse(event.at) / 1000 > master) : [...events].reverse().find((event) => Date.parse(event.at) / 1000 < master);
     if (target) { seekTo(Date.parse(target.at) / 1000); setSelected((old) => old.includes(target.cameraId) ? old : [...old, target.cameraId].slice(0, 6)); setView("control"); }
   };
+  const recoverMediaIndex = () => {
+    if (mediaRecovery.current) return;
+    mediaRecovery.current = true;
+    setTimelineRevision((value) => value + 1);
+  };
   const changeDate = (next: string) => { setDate(next); seekTo(kstSecond(next, formatTime(master))); };
   const changeClock = (next: string) => seekTo(kstSecond(date, next));
   const setCamera = (next: string) => setSelected(next === "all" ? cameras.slice(0, 6).map((camera) => camera.id) : [next]);
@@ -228,7 +239,7 @@ export function App() {
 		<div className="clock">{date} · KST <strong>{formatTime(master)}</strong></div>
 		<button className="ghost" onClick={() => setView("search")}>시간 점프</button>
     </header>
-    {view === "search" ? <SearchView date={date} time={formatTime(master)} cameras={cameras} selected={selected} segments={segments} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent }} />}
+    {view === "search" ? <SearchView date={date} time={formatTime(master)} cameras={cameras} selected={selected} segments={segments} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex }} />}
   </main>;
 }
 
@@ -240,13 +251,13 @@ function SearchView({ date, time, cameras, selected, segments, timelineLoading, 
   </section>;
 }
 
-function ControlView(props: { date: string; cameras: Camera[]; segments: Segment[]; timelineLoading: boolean; timelineFailed: string[]; events: Event[]; capability: Capability; eventState: string; master: number; seekTo: (value: number | ((value: number) => number)) => void; seekRevision: number; primaryCamera: string; setPrimaryCamera: (value: string) => void; primaryRatio: number; setPrimaryRatio: (value: number) => void; setPrimarySyncing: (value: boolean) => void; rate: number; setRate: (value: number) => void; playing: boolean; setPlaying: (value: boolean | ((value: boolean) => boolean)) => void; autoFocus: boolean; setAutoFocus: (value: boolean) => void; focused: string[]; focus: FocusState; pinned: string[] | null; pinFocus: () => void; videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; syncVideo: (camera: Camera, video: HTMLVideoElement) => void; navigateEvent: (direction: 1 | -1) => void }) {
-  const { date, cameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent } = props;
+function ControlView(props: { date: string; cameras: Camera[]; segments: Segment[]; timelineLoading: boolean; timelineFailed: string[]; events: Event[]; capability: Capability; eventState: string; master: number; seekTo: (value: number | ((value: number) => number)) => void; seekRevision: number; primaryCamera: string; setPrimaryCamera: (value: string) => void; primaryRatio: number; setPrimaryRatio: (value: number) => void; setPrimarySyncing: (value: boolean) => void; rate: number; setRate: (value: number) => void; playing: boolean; setPlaying: (value: boolean | ((value: boolean) => boolean)) => void; autoFocus: boolean; setAutoFocus: (value: boolean) => void; focused: string[]; focus: FocusState; pinned: string[] | null; pinFocus: () => void; videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; syncVideo: (camera: Camera, video: HTMLVideoElement) => void; navigateEvent: (direction: 1 | -1) => void; recoverMediaIndex: () => void }) {
+  const { date, cameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex } = props;
   const motionEnabled = capability.motion === "available";
   return <div className="control-view"><section className="controls"><span className="control-summary">선택 카메라 {cameras.length}대 · {focused.length ? `${focused.length}개 자동 포커스` : "전체 보기"}</span>
     <div className="toggle-wrap"><span>모션 자동 포커스 <Info aria-hidden="true" /></span><button type="button" className={`toggle ${autoFocus && motionEnabled ? "on" : ""}`} role="switch" aria-checked={autoFocus && motionEnabled} aria-label="모션 자동 포커스" disabled={!motionEnabled} onClick={() => setAutoFocus(!autoFocus)}><span /></button></div>
     <span className={`motion-status ${capability.motion}`}>{capability.message}{eventState === "partial" ? " · 일부 카메라 이벤트를 불러오지 못했습니다" : eventState === "error" ? " · 이벤트 요청 오류" : ""}</span><button className="ghost" onClick={pinFocus} disabled={!focused.length}>{pinned ? "포커스 고정 해제" : "포커스 고정"}</button><button className="ghost" onClick={() => setPrimaryRatio(defaultPrimaryRatio)}>크기 초기화</button></section>
-	  <section className={`workspace ${capability.motion === "available" ? "" : "events-off"}`}><div><CameraGrid cameras={cameras} segments={segments} timelineLoading={timelineLoading} timelineFailed={timelineFailed} master={master} capability={capability} focused={focused} pulses={focus.pulseUntil} primaryCamera={primaryCamera} onPrimary={setPrimaryCamera} primaryRatio={primaryRatio} onPrimaryRatio={setPrimaryRatio} onPrimarySyncing={setPrimarySyncing} seekRevision={seekRevision} videos={videos} onReady={syncVideo} /><Timeline day={date} segments={segments} events={events} master={master} onSeek={seekTo} /></div><EventRail cameras={cameras} capability={capability} events={events} eventState={eventState} onOpen={(event) => seekTo(Date.parse(event.at) / 1000)} /></section>
+	  <section className={`workspace ${capability.motion === "available" ? "" : "events-off"}`}><div><CameraGrid cameras={cameras} segments={segments} timelineLoading={timelineLoading} timelineFailed={timelineFailed} master={master} capability={capability} focused={focused} pulses={focus.pulseUntil} primaryCamera={primaryCamera} onPrimary={setPrimaryCamera} primaryRatio={primaryRatio} onPrimaryRatio={setPrimaryRatio} onPrimarySyncing={setPrimarySyncing} seekRevision={seekRevision} videos={videos} onReady={syncVideo} onMediaMissing={recoverMediaIndex} /><Timeline day={date} segments={segments} events={events} master={master} onSeek={seekTo} /></div><EventRail cameras={cameras} capability={capability} events={events} eventState={eventState} onOpen={(event) => seekTo(Date.parse(event.at) / 1000)} /></section>
     <footer className="transport"><button onClick={() => navigateEvent(-1)} aria-label="이전 이벤트"><SkipBack aria-hidden="true" />이전 모션</button><button onClick={() => seekTo((value) => value - 10)}>-10초</button><button className="play" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "일시 정지" : "재생"}>{playing ? <Pause weight="fill" /> : <Play weight="fill" />}</button><button onClick={() => seekTo((value) => value + 10)}>+10초</button><div className="rates" aria-label="재생 속도">{speeds.map((speed) => <button className={rate === speed ? "active" : ""} onClick={() => setRate(speed)} key={speed}>x{speed}</button>)}</div><button onClick={() => navigateEvent(1)} aria-label="다음 이벤트">다음 모션<SkipForward aria-hidden="true" /></button></footer>
   </div>;
 }
