@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { cameraLabel, cameraTitle } from "../src/lib/camera.js";
+import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
 
 const segments = [
@@ -95,6 +95,15 @@ test("camera labels hide opaque Shinobi monitor IDs", () => {
   assert.deepEqual(cameraLabel(demo), { title: "CAM-201", subtitle: "하역장" });
   assert.equal(cameraTitle([live], live.id), "CAM-201");
   assert.equal(cameraTitle([], live.id), "알 수 없는 카메라");
+});
+
+test("falls back to available cameras when saved IDs are stale", () => {
+  const cameras = [
+    { id: "opaque-201", name: "201", detector: false },
+    { id: "opaque-202", name: "202", detector: false },
+  ];
+  assert.deepEqual(resolveCameraSelection(cameras, ["CAM-201", "CAM-202"]), ["opaque-201", "opaque-202"]);
+  assert.deepEqual(resolveCameraSelection(cameras, ["opaque-202", "CAM-201"]), ["opaque-202"]);
 });
 
 test("player and timeline keep recovery, preload, fullscreen, and drag wiring", () => {
