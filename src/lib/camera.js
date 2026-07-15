@@ -14,3 +14,9 @@ export function cameraTitle(cameras, id) {
   const camera = cameras.find((item) => item.id === id);
   return camera ? cameraLabel(camera).title : "알 수 없는 카메라";
 }
+
+/** @param {import("./types").Camera[]} cameras @param {string[]} requested @param {number} [limit] */
+export function resolveCameraSelection(cameras, requested, limit = 6) {
+  const valid = requested.filter((id) => cameras.some((camera) => camera.id === id)).slice(0, limit);
+  return valid.length ? valid : cameras.slice(0, limit).map((camera) => camera.id);
+}

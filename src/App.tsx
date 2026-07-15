@@ -4,7 +4,7 @@ import type React from "react";
 import { CameraGrid } from "./components/CameraGrid";
 import { Timeline } from "./components/Timeline";
 import { rewindAPI } from "./lib/api";
-import { cameraLabel, cameraTitle } from "./lib/camera.js";
+import { cameraLabel, cameraTitle, resolveCameraSelection } from "./lib/camera.js";
 import { applyFocus, canCorrectMedia, driftCorrection, expireFocus, monotonicMaster, segmentAt, simultaneousFocus, videoOffset, type FocusState } from "./lib/playback.js";
 import type { Camera, Capability, Event, Segment, View } from "./lib/types";
 
@@ -74,7 +74,7 @@ export function App() {
 	useEffect(() => {
 		void rewindAPI.cameras().then((data) => {
 			setCameras(data);
-			setSelected((old) => old.length ? old.filter((id) => data.some((camera) => camera.id === id)).slice(0, 6) : data.slice(0, 6).map((camera) => camera.id));
+			setSelected((old) => resolveCameraSelection(data, old));
 		}).catch(() => setCapability({ demo: false, motion: "unavailable", message: "카메라 상태 확인 불가" }));
 	}, []);
 
