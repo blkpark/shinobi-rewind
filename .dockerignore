@@ -5,6 +5,7 @@ node_modules
 .npm-cache
 .git
 .gitignore
+/shinobi-rewind
 dist
 coverage
 *.log

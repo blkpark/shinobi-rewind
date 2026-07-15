@@ -3,6 +3,6 @@ node_modules/
 internal/rewind/web/dist/*
 !internal/rewind/web/dist/.keep
 .env
-shinobi-rewind
+/shinobi-rewind
 .DS_Store
 .orca*

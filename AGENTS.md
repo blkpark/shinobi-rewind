@@ -15,3 +15,5 @@ When implementing from a selected generated mock, treat that image as the source
 - Every camera card has a native fullscreen action. Timeline seeking must provide immediate drag/click time feedback and remain keyboard operable.
 - A transient media failure must recover on retry or a later seek; it must not poison a segment for the lifetime of the view.
 - Keep one next recording prepared per camera and promote that prepared player at a real segment boundary to avoid a blank flash.
+- The default desktop layout keeps the primary camera about twice the width and height of a supporting camera. Operators can resize the primary/support split, and that split plus the chosen primary camera persist locally; transient motion focus never overwrites the saved layout.
+- During an explicit seek, hold the master clock until the primary camera is ready, then resume the existing playback intent and rate. Late media events from an older segment must not change the current target state.

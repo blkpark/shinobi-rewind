@@ -14,6 +14,10 @@ export function driftCorrection(current, expected, tolerance = 0.5) {
   return Math.abs(current - expected) > tolerance ? expected : null;
 }
 
+export function canCorrectMedia(targetSegmentId, mediaSegmentId, seeking, readyState) {
+  return targetSegmentId === mediaSegmentId && !seeking && readyState >= 2;
+}
+
 export function monotonicMaster(anchorMaster, anchorWall, rate, now) {
   return anchorMaster + ((now - anchorWall) / 1000) * rate;
 }
