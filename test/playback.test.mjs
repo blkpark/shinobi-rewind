@@ -152,6 +152,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
   const timeline = readFileSync(new URL("../src/components/Timeline.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
   assert.match(app, /effectivePlaying = playing && !primarySyncing/);
@@ -166,6 +167,8 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
   assert.match(grid, /requestFullscreen/);
   assert.match(grid, /pictureInPictureEnabled[\s\S]*requestPictureInPicture[\s\S]*requestFullscreen/);
+  assert.match(grid, /className="camera-actions"[\s\S]*현재 시각 즐겨찾기[\s\S]*소리[\s\S]*PiP[\s\S]*전체화면/);
+  assert.match(styles, /\.supporting-camera header \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto; grid-template-rows: 22px 26px/);
   assert.match(grid, /ResizeObserver/);
   assert.match(grid, /compact-primary/);
   assert.match(timeline, /role="slider"[\s\S]*onPointerDown=.*onPointerMove=.*onPointerUp=.*onKeyDown=/);
