@@ -2,7 +2,7 @@ import { ArrowsOut, Camera as CameraIcon, PictureInPicture, SpeakerHigh, Speaker
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cameraLabel } from "../lib/camera.js";
-import { pipMode } from "../lib/interaction.js";
+import { pipMode, reportDisplayRequest } from "../lib/interaction.js";
 import { compactPrimaryLayout, focusLayout, segmentAt, videoOffset } from "../lib/playback.js";
 import type { Camera, Capability, Segment } from "../lib/types";
 
@@ -123,9 +123,11 @@ function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, m
       .then((response) => { if (response.status === 404) onMediaMissing(); })
       .catch(() => undefined);
   };
-  const fullscreen = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const fullscreen = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    void event.currentTarget.closest("article")?.requestFullscreen();
+    const element = event.currentTarget.closest("article");
+    if (!element) { onPiPStatus("전체화면 대상을 찾을 수 없습니다."); return; }
+    await reportDisplayRequest(() => element.requestFullscreen(), `${label.title} 전체화면으로 전환했습니다.`, "전체화면 전환이 차단되었습니다.", onPiPStatus);
   };
   const pictureInPicture = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -133,15 +135,15 @@ function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, m
     const mode = pipMode(Boolean(video && target), Boolean(document.pictureInPictureEnabled && typeof video?.requestPictureInPicture === "function"));
     if (mode === "unavailable" || !video || !target) { onPiPStatus("재생 가능한 녹화가 없어 PiP를 열 수 없습니다."); return; }
     if (mode === "fullscreen") {
-      onPiPStatus("이 브라우저는 PiP를 지원하지 않아 전체화면으로 전환합니다.");
-      await event.currentTarget.closest("article")?.requestFullscreen().catch(() => undefined);
+      const element = event.currentTarget.closest("article");
+      if (!element) { onPiPStatus("PiP와 전체화면을 사용할 수 없습니다."); return; }
+      await reportDisplayRequest(() => element.requestFullscreen(), "PiP 미지원 · 전체화면으로 전환했습니다.", "PiP가 지원되지 않고 전체화면 전환도 차단되었습니다.", onPiPStatus);
       return;
     }
-    try {
+    await reportDisplayRequest(async () => {
       if (document.pictureInPictureElement && document.pictureInPictureElement !== video) await document.exitPictureInPicture();
       await video.requestPictureInPicture();
-      onPiPStatus(`${label.title}을 브라우저 밖 PiP로 열었습니다.`);
-    } catch { onPiPStatus("PiP 요청이 차단되었습니다. 전체화면을 이용해 주세요."); }
+    }, `${label.title}을 브라우저 밖 PiP로 열었습니다.`, "PiP 요청이 차단되었습니다. 전체화면을 이용해 주세요.", onPiPStatus);
   };
 
   const unavailable = capability.demo || timelineLoading || timelineFailed || !target;

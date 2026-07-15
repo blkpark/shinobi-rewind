@@ -1,10 +1,10 @@
 import { WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
-import { timelineDragTime, timelinePointTime, type Favorite } from "../lib/interaction.js";
+import { filterTimelineFavorites, timelineDragTime, timelinePointTime, type Favorite } from "../lib/interaction.js";
 import type { Event, Segment } from "../lib/types";
 
-type Props = { day: string; segments: Segment[]; events: Event[]; favorites: Favorite[]; master: number; onSeek: (seconds: number) => void; onDay: (day: string) => void };
+type Props = { day: string; segments: Segment[]; events: Event[]; favorites: Favorite[]; selectedCameraIds: string[]; master: number; onSeek: (seconds: number) => void; onDay: (day: string) => void };
 const spans = [86400, 43200, 21600, 3600, 900];
 const labels = ["24시간", "12시간", "6시간", "1시간", "15분"];
 const dayStart = (day: string) => Date.parse(`${day}T00:00:00+09:00`) / 1000;
@@ -20,7 +20,7 @@ function Ranges({ items, kind, visibleStart, span }: { items: { id: string; star
   })}</div>;
 }
 
-export function Timeline({ day, segments, events, favorites, master, onSeek, onDay }: Props) {
+export function Timeline({ day, segments, events, favorites, selectedCameraIds, master, onSeek, onDay }: Props) {
   const start = dayStart(day), end = start + 86400;
   const [zoom, setZoom] = useState(0), [preview, setPreview] = useState<number | null>(null), [drag, setDrag] = useState<{ pointer: number; x: number; anchor: number; width: number } | null>(null);
   const span = spans[zoom], shown = Math.max(start, Math.min(end, preview ?? master)), visibleStart = shown - span / 2;
@@ -45,7 +45,7 @@ export function Timeline({ day, segments, events, favorites, master, onSeek, onD
   const rows = [
     ["recorded", "녹화", segments.filter((item) => item.state === "recorded")],
     ["motion", "모션", events.map((item) => ({ id: item.id, start: item.at, end: item.end || item.at }))],
-    ["favorite", "즐겨찾기", favorites.map((item) => ({ id: item.id, start: item.at, end: item.at }))],
+    ["favorite", "즐겨찾기", filterTimelineFavorites(favorites, selectedCameraIds, day).map((item) => ({ id: item.id, start: item.at, end: item.at }))],
     ["gap", "녹화 공백", segments.filter((item) => item.state === "gap")],
     ["corrupt", "파일 손상", segments.filter((item) => item.state === "corrupt")],
   ] as const;

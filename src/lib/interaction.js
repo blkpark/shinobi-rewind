@@ -1,6 +1,18 @@
 export const minRate = .25;
 export const maxRate = 5;
 
+export function safeStorageGet(storage, key) {
+  try { return storage?.getItem(key) ?? null; } catch { return null; }
+}
+
+export function safeStorageSet(storage, key, value) {
+  try { storage?.setItem(key, value); return Boolean(storage); } catch { return false; }
+}
+
+export async function reportDisplayRequest(request, success, failure, report) {
+  try { await request(); report(success); return true; } catch { report(failure); return false; }
+}
+
 export function clampRate(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 1;
@@ -77,6 +89,14 @@ export function shiftMonth(day, amount) {
   const first = new Date(Date.UTC(year, month - 1 + amount, 1));
   const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
   return `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(date, last)).padStart(2, "0")}`;
+}
+
+export function filterTimelineFavorites(items, cameraIds, day) {
+  return items.filter((item) => {
+    const time = Date.parse(item.at);
+    if (!Number.isFinite(time) || item.cameraId !== null && !cameraIds.includes(item.cameraId)) return false;
+    return new Date(time).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === day;
+  });
 }
 
 export function dayState({ loading, failed, capability, events }) {
