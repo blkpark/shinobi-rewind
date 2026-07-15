@@ -11,3 +11,7 @@ When implementing from a selected generated mock, treat that image as the source
 - Master time is authoritative across every active camera; correct video drift over 500ms and change segments at their real boundaries.
 - Motion events without a source end are point markers. A finite focus hold is UI-only and must never appear as event duration.
 - Show honest loading, unavailable, and unplayable video states. The timeline is a keyboard and pointer seek control, including on narrow screens.
+- On desktop, the primary camera, the other five synchronized cameras, timeline, and transport must fit in one viewport. Clicking a supporting camera swaps it with the primary camera.
+- Every camera card has a native fullscreen action. Timeline seeking must provide immediate drag/click time feedback and remain keyboard operable.
+- A transient media failure must recover on retry or a later seek; it must not poison a segment for the lifetime of the view.
+- Keep one next recording prepared per camera and promote that prepared player at a real segment boundary to avoid a blank flash.

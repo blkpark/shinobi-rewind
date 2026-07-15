@@ -14,6 +14,10 @@ export function driftCorrection(current, expected, tolerance = 0.5) {
   return Math.abs(current - expected) > tolerance ? expected : null;
 }
 
+export function monotonicMaster(anchorMaster, anchorWall, rate, now) {
+  return anchorMaster + ((now - anchorWall) / 1000) * rate;
+}
+
 export function nextSegment(segments, masterSeconds) {
   return [...segments]
     .filter((segment) => segment.state === "recorded" && toSeconds(segment.start) >= masterSeconds)
@@ -47,7 +51,8 @@ export function expireFocus(state, now) {
 }
 
 export function focusLayout(count) {
-  if (count <= 1) return "focus-one";
+  if (count === 0) return "focus-six";
+  if (count === 1) return "focus-one";
   if (count === 2) return "focus-two";
   if (count <= 4) return "focus-four";
   return "focus-six";
