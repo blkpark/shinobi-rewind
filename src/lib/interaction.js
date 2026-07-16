@@ -36,6 +36,10 @@ export function parseKSTSecond(day, clock) {
   return Number.isFinite(value) ? value : null;
 }
 
+export function kstDateAt(seconds) {
+  return new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
 export function parseFavorites(raw) {
   if (!raw) return [];
   try {

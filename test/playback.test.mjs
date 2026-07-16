@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -155,6 +155,11 @@ test("URL time and custom rate drafts reject temporary or malformed values", () 
   assert.equal(parseKSTSecond("2026-02-30", "10:00"), null);
   assert.equal(parseKSTSecond("2026-07-16", "25:00"), null);
   assert.equal(parseRateDraft(""), null); assert.equal(parseRateDraft("oops"), null); assert.equal(parseRateDraft("1.23"), 1.25);
+});
+
+test("recorded playback follows the KST date across midnight", () => {
+  assert.equal(kstDateAt(at("23:59:59")), "2026-07-15");
+  assert.equal(kstDateAt(at("23:59:59") + 1), "2026-07-16");
 });
 
 test("calendar month navigation clamps end-of-month dates", () => {
