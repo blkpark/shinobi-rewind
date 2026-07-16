@@ -246,7 +246,7 @@ test("live view isolates camera sessions and keeps state labels honest", () => {
   assert.match(app, /view === "live" \? <LiveView/);
   assert.match(live, /visible\.filter\(\(camera\) => statuses\[camera\.id\] === "live"\)/);
   assert.match(live, /visibilitychange/);
-  assert.match(live, /shinobi-rewind:play-live/);
+  assert.match(live, /retryAll/);
   assert.match(live, /hls\?\.destroy\(\)/);
   assert.match(live, /camera\.hasAudio === false \? `\$\{label\.title\} 음성 없음` : `\$\{label\.title\} 음성 정보 확인 불가`/);
   assert.match(live, /aria-pressed=\{pipActive\}/);

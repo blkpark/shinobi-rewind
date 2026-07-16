@@ -36,6 +36,7 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
   const [order, setOrder] = useState<string[]>(saved?.order || []);
   const [audible, setAudible] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, LiveState>>({});
+  const [retryAll, setRetryAll] = useState(0);
   const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== "hidden");
   const gridRef = useRef<HTMLDivElement | null>(null);
 
@@ -93,18 +94,18 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
         {([['grid', '3×2'], ['primary', '주+5'], ['quad', '2×2'], ['single', '1대']] as const).map(([value, label]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => setLayout(value)} key={value}>{label}</button>)}
       </div>
       {!capability.lowQuality && capability.available && <small>저대역폭 스트림 미구성 · 고화질 fallback</small>}
-      {capability.available && <button type="button" className="ghost" onClick={() => window.dispatchEvent(new Event("shinobi-rewind:play-live"))}>전체 재생</button>}
+      {capability.available && <button type="button" className="ghost" onClick={() => setRetryAll((value) => value + 1)}>전체 재생</button>}
       {failed && <button type="button" className="ghost" onClick={refresh}>목록 다시 확인</button>}
     </div>
     <div ref={gridRef} className={`live-grid live-${layout}`} aria-label="실시간 카메라 그리드">
-      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} quality={camera.id === primary || !capability.lowQuality ? "high" : "low"} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
+      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} quality={camera.id === primary || !capability.lowQuality ? "high" : "low"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
       {!visible.length && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" /><b>{failed ? "실시간 카메라 목록 확인 불가" : "표시할 카메라가 없습니다."}</b><small>{capability.message}</small></div>}
     </div>
   </section>;
 }
 
-function LiveTile({ camera, primary, quality, enabled, disabledState, audible, onAudible, onPrimary, onRecorded, onState, onNotice, onKeyDown }: {
-  camera: LiveCamera; primary: boolean; quality: "low" | "high"; enabled: boolean; disabledState: "connecting" | "unavailable"; audible: boolean;
+function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, audible, onAudible, onPrimary, onRecorded, onState, onNotice, onKeyDown }: {
+  camera: LiveCamera; primary: boolean; quality: "low" | "high"; retryAll: number; enabled: boolean; disabledState: "connecting" | "unavailable"; audible: boolean;
   onAudible: () => void; onPrimary: () => void; onRecorded: (camera: string, at: string) => void;
   onState: (state: LiveState) => void; onNotice: (message: string) => void; onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }) {
@@ -191,14 +192,9 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
       video.pause(); video.removeAttribute("src");
       releaseTimerRef.current = window.setTimeout(() => { video.load(); releaseTimerRef.current = null; }, 0);
     };
-  }, [camera.id, disabledState, enabled, quality, retry]);
+  }, [camera.id, disabledState, enabled, quality, retry, retryAll]);
 
   useEffect(() => { const video = videoRef.current; if (video) video.muted = !audible; }, [audible]);
-  useEffect(() => {
-    const play = () => { const video = videoRef.current; if (video) void video.play().catch(() => updateState("offline")); };
-    window.addEventListener("shinobi-rewind:play-live", play);
-    return () => window.removeEventListener("shinobi-rewind:play-live", play);
-  }, []);
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
