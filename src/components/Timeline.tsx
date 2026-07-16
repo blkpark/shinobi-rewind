@@ -1,54 +1,61 @@
 import { WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
-import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
+import { filterTimelineFavorites, timelineDragTime, timelinePointTime, type Favorite } from "../lib/interaction.js";
 import type { Event, Segment } from "../lib/types";
 
-type Props = { day: string; segments: Segment[]; events: Event[]; master: number; onSeek: (seconds: number) => void };
-
+type Props = { day: string; segments: Segment[]; events: Event[]; favorites: Favorite[]; selectedCameraIds: string[]; master: number; onSeek: (seconds: number) => void; onDay: (day: string) => void };
+const spans = [86400, 43200, 21600, 3600, 900];
+const labels = ["24시간", "12시간", "6시간", "1시간", "15분"];
 const dayStart = (day: string) => Date.parse(`${day}T00:00:00+09:00`) / 1000;
-const percentage = (stamp: string, start: number) => Math.max(0, Math.min(100, ((Date.parse(stamp) / 1000 - start) / 86400) * 100));
+const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false });
+const kstDay = (seconds: number) => new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 
-function Ranges({ items, kind, start }: { items: { id: string; start: string; end: string }[]; kind: string; start: number }) {
+function position(stamp: string, visibleStart: number, span: number) { return ((Date.parse(stamp) / 1000 - visibleStart) / span) * 100; }
+function Ranges({ items, kind, visibleStart, span }: { items: { id: string; start: string; end: string }[]; kind: string; visibleStart: number; span: number }) {
   return <div className="timeline-ranges">{items.map((item) => {
-    const left = percentage(item.start, start);
-    const right = percentage(item.end, start);
-    return <span className={`timeline-range ${kind}`} key={item.id} style={{ left: `${left}%`, width: `${Math.max(.25, right - left)}%` }} />;
+    const left = position(item.start, visibleStart, span), right = position(item.end, visibleStart, span);
+    if (right < 0 || left > 100) return null;
+    return <span className={`timeline-range ${kind}`} key={item.id} style={{ left: `${Math.max(0, left)}%`, width: `${Math.max(.25, Math.min(100, right) - Math.max(0, left))}%` }} />;
   })}</div>;
 }
 
-export function Timeline({ day, segments, events, master, onSeek }: Props) {
-	const start = dayStart(day);
-	const [preview, setPreview] = useState<number | null>(null);
-	const [dragging, setDragging] = useState(false);
-	const shownTime = preview ?? master;
-	const playhead = Math.max(0, Math.min(100, ((shownTime - start) / 86400) * 100));
-	const pointerTime = (event: PointerEvent<HTMLDivElement>) => {
-		const range = event.currentTarget.querySelector<HTMLElement>(".timeline-ranges");
-		const bounds = range?.getBoundingClientRect() || event.currentTarget.getBoundingClientRect();
-		return start + Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)) * 86400;
-	};
-	const seekStart = (event: PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); setPreview(pointerTime(event)); };
-	const seekMove = (event: PointerEvent<HTMLDivElement>) => { if (dragging) setPreview(pointerTime(event)); };
-	const seekEnd = (event: PointerEvent<HTMLDivElement>) => { const value = pointerTime(event); setDragging(false); setPreview(null); onSeek(value); };
-	const seekKey = (event: KeyboardEvent<HTMLDivElement>) => {
-		const step = event.shiftKey ? 60 : 10;
-		const target = event.key === "Home" ? start : event.key === "End" ? start + 86400 : event.key === "ArrowLeft" ? master - step : event.key === "ArrowRight" ? master + step : null;
-		if (target !== null) { event.preventDefault(); event.stopPropagation(); onSeek(Math.max(start, Math.min(start + 86400, target))); }
-	};
-	const rows = [
-		["recorded", "녹화", segments.filter((segment) => segment.state === "recorded")],
-		["motion", "모션", events.map((event) => ({ id: event.id, start: event.at, end: event.end || event.at }))],
-    ["gap", "녹화 공백", segments.filter((segment) => segment.state === "gap")],
-    ["corrupt", "파일 손상", segments.filter((segment) => segment.state === "corrupt")],
+export function Timeline({ day, segments, events, favorites, selectedCameraIds, master, onSeek, onDay }: Props) {
+  const start = dayStart(day), end = start + 86400;
+  const [zoom, setZoom] = useState(0), [preview, setPreview] = useState<number | null>(null), [drag, setDrag] = useState<{ pointer: number; x: number; anchor: number; width: number } | null>(null);
+  const span = spans[zoom], shown = Math.max(start, Math.min(end, preview ?? master)), visibleStart = shown - span / 2;
+  const ticks = Array.from({ length: 7 }, (_, index) => visibleStart + span * index / 6);
+  const seekMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    setPreview(Math.max(start, Math.min(end, timelineDragTime(drag.anchor, event.clientX - drag.x, drag.width, span))));
+  };
+  const seekEnd = (event: PointerEvent<HTMLDivElement>) => {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    const target = preview ?? drag.anchor;
+    setDrag(null); setPreview(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    onSeek(target);
+  };
+  const seekKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const target = event.key === "Home" ? start : event.key === "End" ? end : event.key === "ArrowLeft" ? master - 5 : event.key === "ArrowRight" ? master + 5 : null;
+    if (target !== null) { event.preventDefault(); event.stopPropagation(); onSeek(Math.max(start, Math.min(end, target))); }
+  };
+  const zoomBy = (amount: number) => setZoom((value) => Math.max(0, Math.min(spans.length - 1, value + amount)));
+  const wheel = (event: WheelEvent<HTMLDivElement>) => { event.preventDefault(); zoomBy(event.deltaY > 0 ? -1 : 1); };
+  const rows = [
+    ["recorded", "녹화", segments.filter((item) => item.state === "recorded")],
+    ["motion", "모션", events.map((item) => ({ id: item.id, start: item.at, end: item.end || item.at }))],
+    ["favorite", "즐겨찾기", filterTimelineFavorites(favorites, selectedCameraIds, day).map((item) => ({ id: item.id, start: item.at, end: item.at }))],
+    ["gap", "녹화 공백", segments.filter((item) => item.state === "gap")],
+    ["corrupt", "파일 손상", segments.filter((item) => item.state === "corrupt")],
   ] as const;
-	return <section className="timeline" aria-label="하루 타임라인">
-		<div className={`timeline-seek ${dragging ? "dragging" : ""}`} role="slider" tabIndex={0} aria-label="하루 타임라인 탐색" aria-valuemin={start} aria-valuemax={start + 86400} aria-valuenow={master} aria-valuetext={new Date(master * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false })} onPointerDown={seekStart} onPointerMove={seekMove} onPointerUp={seekEnd} onPointerCancel={() => { setDragging(false); setPreview(null); }} onKeyDown={seekKey}>
-		<div className="timeline-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
-    {rows.map(([kind, label, items]) => <div className="timeline-row" key={kind}>
-      <span>{kind === "corrupt" ? <WarningCircle aria-hidden="true" /> : null}{label}</span>
-      <Ranges items={items} kind={kind} start={start} />
-    </div>)}
-		<span className="playhead" style={{ "--playhead": playhead / 100 } as CSSProperties} aria-label="현재 재생 시각"><time>{new Date(shownTime * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false })}</time></span>
-		</div>
-	</section>;
+  const changeDay = (amount: number) => onDay(new Date((start + amount * 86400) * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }));
+  return <section className="timeline" aria-label="고정 재생헤드 타임라인">
+    <header className="timeline-toolbar"><button onClick={() => changeDay(-1)}>‹ 전날</button><b>{day} · KST</b><button onClick={() => changeDay(1)}>다음날 ›</button><span /><small>휠로 확대·축소</small><button onClick={() => zoomBy(-1)} aria-label="타임라인 축소">−</button><select value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="타임라인 범위">{labels.map((label, index) => <option value={index} key={label}>{label}</option>)}</select><button onClick={() => zoomBy(1)} aria-label="타임라인 확대">＋</button></header>
+    <div className={`timeline-seek fixed ${drag ? "dragging" : ""}`} role="slider" tabIndex={0} aria-label="영상 시간" aria-valuemin={start} aria-valuemax={end} aria-valuenow={master} aria-valuetext={`${kstDay(shown)} ${clock(shown)} KST`} onWheel={wheel} onPointerDown={(event) => { if (event.button !== 0) return; const bounds = event.currentTarget.querySelector<HTMLElement>(".timeline-ranges")?.getBoundingClientRect(); if (!bounds) return; const anchor = Math.max(start, Math.min(end, timelinePointTime(visibleStart, event.clientX, bounds.left, bounds.width, span))); event.currentTarget.setPointerCapture(event.pointerId); setDrag({ pointer: event.pointerId, x: event.clientX, anchor, width: bounds.width }); setPreview(anchor); }} onPointerMove={seekMove} onPointerUp={seekEnd} onPointerCancel={() => { setDrag(null); setPreview(null); }} onKeyDown={seekKey}>
+      <div className="timeline-axis">{ticks.map((tick) => <span className={kstDay(tick) !== day ? "boundary" : ""} key={tick}>{kstDay(tick) !== day ? `${kstDay(tick).slice(5)} ` : ""}{clock(tick).slice(0, 5)}</span>)}</div>
+      {rows.map(([kind, label, items]) => <div className="timeline-row" key={kind}><span>{kind === "corrupt" ? <WarningCircle aria-hidden="true" /> : null}{label}</span><Ranges items={items} kind={kind} visibleStart={visibleStart} span={span} /></div>)}
+      <span className="playhead fixed-playhead" style={{ "--playhead": .5 } as CSSProperties}><time>{kstDay(shown)} {clock(shown)}</time></span>
+    </div>
+  </section>;
 }
