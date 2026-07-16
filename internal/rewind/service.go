@@ -20,13 +20,15 @@ import (
 var web embed.FS
 
 type Service struct {
-	config  Config
-	source  Source
-	client  *http.Client
-	mu      sync.RWMutex
-	allowed map[string]struct{}
-	liveMu  sync.Mutex
-	live    map[string]liveAsset
+	config     Config
+	source     Source
+	client     *http.Client
+	mu         sync.RWMutex
+	allowed    map[string]struct{}
+	liveMu     sync.Mutex
+	live       map[string]liveAsset
+	archive    *archiveStore
+	archiveErr error
 }
 
 func NewService(c Config, source Source) *Service {
@@ -40,11 +42,15 @@ func NewService(c Config, source Source) *Service {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = upstreamTimeout(c)
 	transport.DialContext = (&net.Dialer{Timeout: upstreamTimeout(c)}).DialContext
-	return &Service{
+	service := &Service{
 		config: c, source: source, allowed: map[string]struct{}{},
 		live:   map[string]liveAsset{},
 		client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
+	if c.ArchiveRoot != "" {
+		service.archive, service.archiveErr = newArchiveStore(c.ArchiveRoot, service)
+	}
+	return service
 }
 
 func (s *Service) Handler() http.Handler {
@@ -64,6 +70,19 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/live/{camera}/playlist.m3u8", s.livePlaylist)
 	mux.HandleFunc("GET /api/v1/live/{camera}/segments/{id}", s.liveSegment)
 	mux.HandleFunc("HEAD /api/v1/live/{camera}/segments/{id}", s.liveSegment)
+	mux.HandleFunc("POST /api/v1/archives", s.createArchive)
+	mux.HandleFunc("GET /api/v1/archives", s.listArchives)
+	mux.HandleFunc("GET /api/v1/archives/{id}", s.getArchive)
+	mux.HandleFunc("GET /api/v1/archives/{id}/videos/{artifact}", s.archiveVideo)
+	mux.HandleFunc("HEAD /api/v1/archives/{id}/videos/{artifact}", s.archiveVideo)
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/archives") {
+			w.Header().Set("Allow", "GET, HEAD, POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		http.NotFound(w, r)
+	})
 	assets, _ := fs.Sub(web, "web/dist")
 	mux.Handle("/", spa(assets))
 	return logging(mux)

@@ -2,6 +2,10 @@ services:
   shinobi-rewind:
     build: .
     env_file: .env
+    environment:
+      ARCHIVE_ROOT: /archive
+    volumes:
+      - "${SHINOBI_REWIND_ARCHIVE_PATH:-./archive}:/archive"
     ports:
       - "${SHINOBI_REWIND_BIND_IP:-127.0.0.1}:${SHINOBI_REWIND_PORT:-8092}:8080"
     networks: [cctv]

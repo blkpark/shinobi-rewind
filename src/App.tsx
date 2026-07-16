@@ -95,8 +95,10 @@ export function App() {
 		void rewindAPI.cameras().then((data) => {
 			setCameras(data);
 			setSelected((old) => resolveCameraSelection(data, old));
+			const known = new Set(data.map((camera) => camera.id));
+			void Promise.allSettled(favorites.filter((favorite) => favorite.cameraId && known.has(favorite.cameraId)).map((favorite) => rewindAPI.createArchive({ at: favorite.at, cameraIds: [favorite.cameraId!], label: favorite.label })));
 		}).catch(() => setCapability({ demo: false, motion: "unavailable", message: "카메라 상태 확인 불가" }));
-	}, []);
+	}, []); // Existing single-camera favorites are registered idempotently once cameras are known.
 
   useEffect(() => {
     if (view !== "live") return;
@@ -273,7 +275,12 @@ export function App() {
     const next = existing ? favorites.filter((item) => item.id !== existing.id) : [...favorites, { id: `${cameraId || "all"}:${at}`, cameraId, at }];
     if (!safeStorageSet(browserStorage(), favoritesKey, serializeFavorites(next))) { setNotice("즐겨찾기를 저장할 수 없습니다. 브라우저 저장소 권한과 용량을 확인해 주세요."); return; }
     setFavorites(next);
-    setNotice(existing ? "즐겨찾기에서 제거했습니다." : "현재 KST 시각을 즐겨찾기에 저장했습니다.");
+    if (existing) { setNotice("즐겨찾기에서 제거했습니다. 이미 검증된 백업은 유지됩니다."); return; }
+    const cameraIds = cameraId ? [cameraId] : selected;
+    setNotice("즐겨찾기를 저장하고 백업을 요청했습니다.");
+    void rewindAPI.createArchive({ at, cameraIds }).then((archive) => {
+      setNotice(archive.status === "verified" ? "즐겨찾기 백업 검증이 완료되었습니다." : "즐겨찾기 백업 요청을 접수했습니다.");
+    }).catch(() => setNotice("즐겨찾기는 저장했지만 백업을 요청하지 못했습니다. 보조 드라이브 상태를 확인해 주세요."));
   };
   const jumpFavorite = (favorite: Favorite) => {
     const target = Date.parse(favorite.at) / 1000;
