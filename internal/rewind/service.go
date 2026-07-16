@@ -160,6 +160,9 @@ func (s *Service) timeline(w http.ResponseWriter, r *http.Request) {
 		apiError(w, err)
 		return
 	}
+	if data.Segments == nil {
+		data.Segments = []Segment{}
+	}
 	writeJSON(w, http.StatusOK, data)
 }
 
