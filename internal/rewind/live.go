@@ -155,9 +155,11 @@ func (s *Service) liveURLs(camera, quality string) (*url.URL, *url.URL, error) {
 		if quality == "" {
 			quality = "high"
 		}
-		root := s.config.LiveHLSURL.JoinPath(strings.ToLower(camera) + "_" + quality)
+		root := s.config.LiveHLSURL.JoinPath("cam" + strings.ToLower(camera) + quality)
 		root.RawQuery, root.Fragment = "", ""
-		return root.JoinPath("index.m3u8"), root, nil
+		playlist := root.JoinPath("index.m3u8")
+		playlist.RawQuery = "cookieCheck=1"
+		return playlist, root, nil
 	}
 	if s.config.ShinobiURL == nil || s.config.ShinobiKey == "" || s.config.ShinobiGroup == "" {
 		return nil, nil, fmt.Errorf("live upstream is not configured")

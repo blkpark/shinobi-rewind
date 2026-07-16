@@ -325,11 +325,11 @@ func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
 	}
 	service := NewService(Config{LiveHLSURL: base}, testSource{cameras: []Camera{{ID: "CAM-1"}}})
 	high, highRoot, err := service.liveURLs("CAM-1", "high")
-	if err != nil || !strings.HasSuffix(high.Path, "/hls/cam-1_high/index.m3u8") || !strings.HasSuffix(highRoot.Path, "/hls/cam-1_high") {
+	if err != nil || !strings.HasSuffix(high.Path, "/hls/camcam-1high/index.m3u8") || high.RawQuery != "cookieCheck=1" || !strings.HasSuffix(highRoot.Path, "/hls/camcam-1high") {
 		t.Fatalf("high live URL = %v, root = %v, err = %v", high, highRoot, err)
 	}
 	low, lowRoot, err := service.liveURLs("CAM-1", "low")
-	if err != nil || !strings.HasSuffix(low.Path, "/hls/cam-1_low/index.m3u8") || !strings.HasSuffix(lowRoot.Path, "/hls/cam-1_low") {
+	if err != nil || !strings.HasSuffix(low.Path, "/hls/camcam-1low/index.m3u8") || low.RawQuery != "cookieCheck=1" || !strings.HasSuffix(lowRoot.Path, "/hls/camcam-1low") {
 		t.Fatalf("low live URL = %v, root = %v, err = %v", low, lowRoot, err)
 	}
 	response := httptest.NewRecorder()
