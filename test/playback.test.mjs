@@ -200,7 +200,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
-  assert.match(app, /effectivePlaying = playing && !primarySyncing/);
+  assert.match(app, /effectivePlaying = view !== "live" && playing && !primarySyncing/);
   assert.equal(grid.match(/<video /g)?.length, 1);
   assert.match(grid, /data-segment-id=\{target\.id\}/);
   assert.match(grid, /method: "HEAD"[\s\S]*response\.status === 404[\s\S]*onMediaMissing/);
@@ -231,4 +231,16 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(timeline, /end: item\.end \|\| item\.at/);
   assert.match(search, /goMonth\(-1\)[\s\S]*goMonth\(1\)[\s\S]*today/);
   assert.match(search, /value="recorded">녹화 있음/);
+});
+
+test("live view isolates camera sessions and keeps state labels honest", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const live = readFileSync(new URL("../src/components/LiveView.tsx", import.meta.url), "utf8");
+  assert.match(app, /view === "live" \? <LiveView/);
+  assert.match(live, /visible\.filter\(\(camera\) => statuses\[camera\.id\] === "live"\)/);
+  assert.match(live, /visibilitychange/);
+  assert.match(live, /hls\?\.destroy\(\)/);
+  assert.match(live, /camera\.hasAudio === false \? `\$\{label\.title\} 음성 없음` : `\$\{label\.title\} 음성 정보 확인 불가`/);
+  assert.match(live, /aria-pressed=\{pipActive\}/);
+  assert.match(live, /aria-pressed=\{fullscreenActive\}/);
 });

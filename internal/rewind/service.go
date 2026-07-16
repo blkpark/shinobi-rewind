@@ -25,6 +25,8 @@ type Service struct {
 	client  *http.Client
 	mu      sync.RWMutex
 	allowed map[string]struct{}
+	liveMu  sync.Mutex
+	live    map[string]liveAsset
 }
 
 func NewService(c Config, source Source) *Service {
@@ -40,6 +42,7 @@ func NewService(c Config, source Source) *Service {
 	transport.DialContext = (&net.Dialer{Timeout: upstreamTimeout(c)}).DialContext
 	return &Service{
 		config: c, source: source, allowed: map[string]struct{}{},
+		live:   map[string]liveAsset{},
 		client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 }
@@ -56,6 +59,11 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/events", s.events)
 	mux.HandleFunc("GET /api/v1/videos/{id}", s.video)
 	mux.HandleFunc("HEAD /api/v1/videos/{id}", s.video)
+	mux.HandleFunc("GET /api/v1/live/capabilities", s.liveCapabilities)
+	mux.HandleFunc("GET /api/v1/live/cameras", s.liveCameras)
+	mux.HandleFunc("GET /api/v1/live/{camera}/playlist.m3u8", s.livePlaylist)
+	mux.HandleFunc("GET /api/v1/live/{camera}/segments/{id}", s.liveSegment)
+	mux.HandleFunc("HEAD /api/v1/live/{camera}/segments/{id}", s.liveSegment)
 	assets, _ := fs.Sub(web, "web/dist")
 	mux.Handle("/", spa(assets))
 	return logging(mux)
