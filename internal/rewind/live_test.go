@@ -228,6 +228,10 @@ func (s liveMetadataSource) Timeline(_ context.Context, day time.Time, camera st
 	}
 	return s.timelines[camera+"\x00"+day.Format("2006-01-02")], nil
 }
+func (s liveMetadataSource) Recordings(ctx context.Context, from, _ time.Time, camera string) ([]Segment, error) {
+	timeline, err := s.Timeline(ctx, from, camera)
+	return timeline.Segments, err
+}
 
 func TestLiveMetadataUsesOnlyCompletedRecordedSegments(t *testing.T) {
 	now := time.Now().In(seoul)

@@ -1,4 +1,4 @@
-import type { Archive, Camera, Capability, Event, LiveCamera, LiveCapability, Segment } from "./types";
+import type { Archive, Camera, Capability, Event, LiveCamera, LiveCapability, RecordingSummary, Segment } from "./types";
 
 async function get<T>(path: string): Promise<T> {
   const response = await fetch(path);
@@ -16,6 +16,7 @@ export const rewindAPI = {
   cameras: () => get<Camera[]>("/api/v1/cameras"),
   capabilities: (cameras: string[]) => get<Capability>(`/api/v1/capabilities?cameras=${encodeURIComponent(cameras.join(","))}`),
   timeline: (date: string, camera: string) => get<{ segments: Segment[] }>(`/api/v1/timeline?date=${date}&camera=${encodeURIComponent(camera)}`),
+  recordingSummary: (from: string, to: string, cameras: string[]) => get<RecordingSummary>(`/api/v1/recording-summary?from=${from}&to=${to}&cameras=${encodeURIComponent(cameras.join(","))}`),
   events: (from: string, to: string, camera: string) => get<Event[]>(`/api/v1/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&camera=${encodeURIComponent(camera)}`),
   archives: (filter: { month?: string; date?: string }) => {
     const params = new URLSearchParams();

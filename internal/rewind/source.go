@@ -10,6 +10,7 @@ import (
 type Source interface {
 	Cameras(context.Context) ([]Camera, error)
 	Timeline(context.Context, time.Time, string) (Timeline, error)
+	Recordings(context.Context, time.Time, time.Time, string) ([]Segment, error)
 	Events(context.Context, time.Time, time.Time, string) ([]Event, error)
 	Segment(string) (Segment, bool)
 	Capabilities(context.Context, []Camera, []string, time.Time, time.Time) (Capabilities, error)
@@ -64,6 +65,16 @@ func (d *demoSource) Timeline(_ context.Context, day time.Time, camera string) (
 		return out[i].ID < out[j].ID
 	})
 	return Timeline{CameraID: camera, Segments: out}, nil
+}
+func (d *demoSource) Recordings(_ context.Context, from, to time.Time, camera string) ([]Segment, error) {
+	var out []Segment
+	for _, segment := range d.segments {
+		if segment.CameraID == camera && segment.Start.Before(to) && segment.End.After(from) {
+			out = append(out, segment)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
+	return out, nil
 }
 func (d *demoSource) Events(context.Context, time.Time, time.Time, string) ([]Event, error) {
 	return nil, nil

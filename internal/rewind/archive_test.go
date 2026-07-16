@@ -43,6 +43,10 @@ func (s archiveTestSource) Cameras(context.Context) ([]Camera, error) { return s
 func (s archiveTestSource) Timeline(_ context.Context, day time.Time, camera string) (Timeline, error) {
 	return s.timelines[day.Format("2006-01-02")+"\x00"+camera], nil
 }
+func (s archiveTestSource) Recordings(ctx context.Context, from, _ time.Time, camera string) ([]Segment, error) {
+	timeline, err := s.Timeline(ctx, from, camera)
+	return timeline.Segments, err
+}
 func (s archiveTestSource) Events(context.Context, time.Time, time.Time, string) ([]Event, error) {
 	return nil, nil
 }

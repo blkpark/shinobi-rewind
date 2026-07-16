@@ -3,6 +3,7 @@ package rewind
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,8 @@ type testSource struct {
 	cameras       []Camera
 	ready         error
 	emptyTimeline bool
+	recordings    map[string][]Segment
+	recordingErr  map[string]error
 }
 
 func (t testSource) Cameras(context.Context) ([]Camera, error) { return t.cameras, nil }
@@ -26,6 +29,16 @@ func (t testSource) Timeline(_ context.Context, day time.Time, camera string) (T
 		return Timeline{CameraID: camera}, nil
 	}
 	return Timeline{CameraID: camera, Segments: []Segment{{ID: "day", CameraID: camera, Start: day, End: day.Add(time.Minute), State: "recorded"}}}, nil
+}
+func (t testSource) Recordings(ctx context.Context, from, _ time.Time, camera string) ([]Segment, error) {
+	if err := t.recordingErr[camera]; err != nil {
+		return nil, err
+	}
+	if t.recordings != nil {
+		return t.recordings[camera], nil
+	}
+	timeline, err := t.Timeline(ctx, from, camera)
+	return timeline.Segments, err
 }
 func (t testSource) Events(context.Context, time.Time, time.Time, string) ([]Event, error) {
 	return nil, nil
@@ -197,6 +210,50 @@ func TestTimelineSerializesEmptySegmentsAsArray(t *testing.T) {
 	}
 	if string(body.Segments) != "[]" {
 		t.Fatalf("segments = %s, want []", body.Segments)
+	}
+}
+
+func TestRecordingSummaryAggregatesVisibleHoursAndPartialFailures(t *testing.T) {
+	day, _ := parseKSTDate("2026-07-15")
+	source := testSource{
+		cameras: []Camera{{ID: "CAM-1"}, {ID: "CAM-2"}},
+		recordings: map[string][]Segment{"CAM-1": {
+			{CameraID: "CAM-1", Start: day.Add(10 * time.Minute), End: day.Add(70 * time.Minute), State: "recorded"},
+			{CameraID: "CAM-1", Start: day.Add(70 * time.Minute), End: day.Add(80 * time.Minute), State: "gap"},
+			{CameraID: "CAM-1", Start: day.Add(2 * time.Hour), End: day.Add(2*time.Hour + time.Minute), State: "corrupt"},
+		}},
+		recordingErr: map[string]error{"CAM-2": fmt.Errorf("upstream unavailable")},
+	}
+	res := httptest.NewRecorder()
+	NewService(Config{}, source).Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/api/v1/recording-summary?from=2026-07-15&to=2026-07-15&cameras=CAM-1,CAM-2", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", res.Code, res.Body.String())
+	}
+	var body RecordingSummary
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Days) != 1 || len(body.Days[0].Hours) != 24 || body.Days[0].Hours[0].Recorded != 1 || body.Days[0].Hours[1].Recorded != 1 || body.Days[0].Hours[1].Gap != 1 || body.Days[0].Hours[2].Corrupt != 1 {
+		t.Fatalf("summary = %#v", body)
+	}
+	if body.CameraCount != 2 || len(body.FailedCameras) != 1 || body.FailedCameras[0] != "CAM-2" {
+		t.Fatalf("camera status = %#v", body)
+	}
+}
+
+func TestRecordingSummaryRejectsInvalidRangesAndCameraScopes(t *testing.T) {
+	s := NewService(Config{}, testSource{cameras: []Camera{{ID: "CAM-1"}}})
+	for _, raw := range []string{
+		"/api/v1/recording-summary?from=2026-07-17&to=2026-07-16&cameras=CAM-1",
+		"/api/v1/recording-summary?from=2026-07-01&to=2026-08-01&cameras=CAM-1",
+		"/api/v1/recording-summary?from=2026-07-17&to=2026-07-17&cameras=CAM-1,CAM-1",
+		"/api/v1/recording-summary?from=2026-07-17&to=2026-07-17&cameras=unknown",
+	} {
+		res := httptest.NewRecorder()
+		s.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, raw, nil))
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d", raw, res.Code)
+		}
 	}
 }
 
