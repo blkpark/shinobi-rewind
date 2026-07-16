@@ -6,7 +6,7 @@ Read-only companion for finding Shinobi recordings by exact time and reviewing u
 
 `make run` builds the embedded React UI and launches demo mode at `http://localhost:8080`. Demo mode includes recording, gap, and corrupt timeline states and deliberately reports `모션 데이터 사용 불가 · detector off`.
 
-For a live, read-only installation copy `.env.example` to `.env`, set `DEMO_MODE=false`, and provide `SHINOBI_URL`, `SHINOBI_GROUP_KEY`, and `SHINOBI_API_KEY` through your secret manager. The credentials and upstream recording paths are never sent to the browser or included in request logs.
+For a live, read-only installation copy `.env.example` to `.env`, set `DEMO_MODE=false`, and provide `SHINOBI_URL`, `SHINOBI_GROUP_KEY`, and `SHINOBI_API_KEY` through your secret manager. Set `SHINOBI_LOW_STREAM_CHANNEL` only when every exposed monitor has that static Shinobi stream channel (the first channel is `0`). The credentials and upstream recording paths are never sent to the browser or included in request logs.
 
 The included Compose example joins an existing `cctv` Docker network and binds to `127.0.0.1:8092` by default. Override `SHINOBI_REWIND_BIND_IP` and `SHINOBI_REWIND_PORT` in the deployment environment; keep site-specific addresses out of the public repository.
 

@@ -4,17 +4,19 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type Config struct {
-	ListenAddr    string
-	Demo          bool
-	ShinobiURL    *url.URL
-	ShinobiGroup  string
-	ShinobiKey    string
-	HeaderTimeout time.Duration
+	ListenAddr        string
+	Demo              bool
+	ShinobiURL        *url.URL
+	ShinobiGroup      string
+	ShinobiKey        string
+	ShinobiLowChannel string
+	HeaderTimeout     time.Duration
 }
 
 func LoadConfig() (Config, error) {
@@ -22,7 +24,11 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{ListenAddr: value("LISTEN_ADDR", ":8080"), Demo: demo, ShinobiGroup: os.Getenv("SHINOBI_GROUP_KEY"), ShinobiKey: os.Getenv("SHINOBI_API_KEY"), HeaderTimeout: 15 * time.Second}
+	lowChannel, err := parseLowChannel(os.Getenv("SHINOBI_LOW_STREAM_CHANNEL"))
+	if err != nil {
+		return Config{}, err
+	}
+	c := Config{ListenAddr: value("LISTEN_ADDR", ":8080"), Demo: demo, ShinobiGroup: os.Getenv("SHINOBI_GROUP_KEY"), ShinobiKey: os.Getenv("SHINOBI_API_KEY"), ShinobiLowChannel: lowChannel, HeaderTimeout: 15 * time.Second}
 	if c.Demo {
 		return c, nil
 	}
@@ -39,6 +45,17 @@ func LoadConfig() (Config, error) {
 	}
 	c.ShinobiURL = u
 	return c, nil
+}
+
+func parseLowChannel(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	channel, err := strconv.Atoi(raw)
+	if err != nil || channel < 0 {
+		return "", fmt.Errorf("SHINOBI_LOW_STREAM_CHANNEL must be a non-negative integer")
+	}
+	return strconv.Itoa(channel), nil
 }
 
 func parseDemo(raw string) (bool, error) {

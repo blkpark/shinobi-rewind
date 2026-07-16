@@ -26,7 +26,7 @@ func liveTestService(t *testing.T, upstream http.Handler) (*Service, *httptest.S
 		t.Fatal(err)
 	}
 	service := NewService(Config{
-		ShinobiURL: base, ShinobiKey: "sensitive-api-key", ShinobiGroup: "private-group", HeaderTimeout: time.Second,
+		ShinobiURL: base, ShinobiKey: "sensitive-api-key", ShinobiGroup: "private-group", ShinobiLowChannel: "0", HeaderTimeout: time.Second,
 	}, testSource{cameras: []Camera{{ID: "CAM-1"}, {ID: "CAM-2"}}})
 	return service, server
 }
@@ -167,8 +167,8 @@ func TestLiveHLSProxyHonorsAllowlistQualityAndCancellation(t *testing.T) {
 	defer upstream.Close()
 
 	for raw, want := range map[string]int{
-		"/api/v1/live/unknown/playlist.m3u8":           http.StatusNotFound,
-		"/api/v1/live/CAM-1/playlist.m3u8?quality=low": http.StatusUnprocessableEntity,
+		"/api/v1/live/unknown/playlist.m3u8":              http.StatusNotFound,
+		"/api/v1/live/CAM-1/playlist.m3u8?quality=medium": http.StatusUnprocessableEntity,
 	} {
 		response := httptest.NewRecorder()
 		service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, raw, nil))
@@ -275,13 +275,17 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 	defer upstream.Close()
 	response := httptest.NewRecorder()
 	service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/live/capabilities", nil))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"lowQuality":false`) || !strings.Contains(response.Body.String(), `"transport":"hls"`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"lowQuality":true`) || !strings.Contains(response.Body.String(), `"transport":"hls"`) {
 		t.Fatalf("capabilities = %d %q", response.Code, response.Body.String())
 	}
 
-	_, root, err := service.liveURLs("CAM-1")
+	_, root, err := service.liveURLs("CAM-1", "high")
 	if err != nil {
 		t.Fatal(err)
+	}
+	low, lowRoot, err := service.liveURLs("CAM-1", "low")
+	if err != nil || !strings.HasSuffix(low.Path, "/CAM-1/0/s.m3u8") || !strings.HasSuffix(lowRoot.Path, "/CAM-1/0") {
+		t.Fatalf("low live URL = %v, root = %v, err = %v", low, lowRoot, err)
 	}
 	service.liveMu.Lock()
 	for i := 0; i < maxLiveAssets; i++ {

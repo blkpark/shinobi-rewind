@@ -43,7 +43,7 @@ func (s *Service) liveCapabilities(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available":  available,
 		"transport":  transport,
-		"lowQuality": false,
+		"lowQuality": available && s.config.ShinobiLowChannel != "",
 		"message":    message,
 	})
 }
@@ -117,11 +117,15 @@ func (s *Service) livePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	quality := r.URL.Query().Get("quality")
-	if quality != "" && quality != "high" {
+	if quality != "" && quality != "high" && quality != "low" {
 		http.Error(w, "requested live quality is unavailable", http.StatusUnprocessableEntity)
 		return
 	}
-	upstream, root, err := s.liveURLs(camera)
+	if quality == "low" && s.config.ShinobiLowChannel == "" {
+		http.Error(w, "requested live quality is unavailable", http.StatusUnprocessableEntity)
+		return
+	}
+	upstream, root, err := s.liveURLs(camera, quality)
 	if err != nil {
 		http.Error(w, "live stream is unavailable", http.StatusServiceUnavailable)
 		return
@@ -143,7 +147,7 @@ func (s *Service) liveSegment(w http.ResponseWriter, r *http.Request) {
 	s.serveLiveAsset(w, r, asset)
 }
 
-func (s *Service) liveURLs(camera string) (*url.URL, *url.URL, error) {
+func (s *Service) liveURLs(camera, quality string) (*url.URL, *url.URL, error) {
 	if s.config.ShinobiURL == nil || s.config.ShinobiKey == "" || s.config.ShinobiGroup == "" {
 		return nil, nil, fmt.Errorf("live upstream is not configured")
 	}
@@ -153,6 +157,9 @@ func (s *Service) liveURLs(camera string) (*url.URL, *url.URL, error) {
 		}
 	}
 	root := s.config.ShinobiURL.JoinPath(s.config.ShinobiKey, "hls", s.config.ShinobiGroup, camera)
+	if quality == "low" {
+		root = root.JoinPath(s.config.ShinobiLowChannel)
+	}
 	root.RawQuery, root.Fragment = "", ""
 	playlist := root.JoinPath("s.m3u8")
 	return playlist, root, nil
