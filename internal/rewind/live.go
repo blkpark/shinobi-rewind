@@ -339,10 +339,16 @@ func (s *Service) takeLiveAsset(camera, token string) (liveAsset, bool) {
 }
 
 func (s *Service) trustedLiveURL(candidate, root *url.URL) bool {
-	if candidate == nil || root == nil || s.config.ShinobiURL == nil || candidate.User != nil || candidate.Fragment != "" {
+	if candidate == nil || root == nil || candidate.User != nil || candidate.Fragment != "" {
 		return false
 	}
 	trusted := s.config.ShinobiURL
+	if s.config.LiveHLSURL != nil {
+		trusted = s.config.LiveHLSURL
+	}
+	if trusted == nil {
+		return false
+	}
 	if candidate.Scheme != trusted.Scheme || candidate.Host != trusted.Host {
 		return false
 	}

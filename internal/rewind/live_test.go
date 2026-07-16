@@ -311,7 +311,13 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 }
 
 func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/index.m3u8") {
+			_, _ = io.WriteString(w, "#EXTM3U\nsegment.ts\n")
+			return
+		}
+		http.NotFound(w, r)
+	}))
 	defer upstream.Close()
 	base, err := url.Parse(upstream.URL + "/hls")
 	if err != nil {
@@ -330,5 +336,10 @@ func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
 	service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/live/capabilities", nil))
 	if !strings.Contains(response.Body.String(), `"lowQuality":true`) {
 		t.Fatalf("capabilities = %q", response.Body.String())
+	}
+	playlist := httptest.NewRecorder()
+	service.Handler().ServeHTTP(playlist, httptest.NewRequest(http.MethodGet, "/api/v1/live/CAM-1/playlist.m3u8?quality=low", nil))
+	if playlist.Code != http.StatusOK || proxiedLivePath.FindString(playlist.Body.String()) == "" {
+		t.Fatalf("dedicated playlist = %d %q", playlist.Code, playlist.Body.String())
 	}
 }
