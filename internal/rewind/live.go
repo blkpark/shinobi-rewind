@@ -28,6 +28,7 @@ type liveAsset struct {
 	camera   string
 	upstream *url.URL
 	root     *url.URL
+	cookie   string
 	expires  time.Time
 }
 
@@ -198,6 +199,9 @@ func (s *Service) serveLiveAsset(w http.ResponseWriter, r *http.Request, asset l
 			req.Header.Set(header, value)
 		}
 	}
+	if asset.cookie != "" {
+		req.Header.Set("Cookie", asset.cookie)
+	}
 	response, err := s.client.Do(req)
 	if err != nil {
 		http.Error(w, "live asset unavailable", http.StatusBadGateway)
@@ -224,7 +228,15 @@ func (s *Service) serveLiveAsset(w http.ResponseWriter, r *http.Request, asset l
 			http.Error(w, "live playlist unavailable", http.StatusBadGateway)
 			return
 		}
-		rewritten, err := s.rewritePlaylist(asset.camera, asset.upstream, asset.root, string(body))
+		cookie := asset.cookie
+		if cookies := response.Cookies(); len(cookies) > 0 {
+			parts := make([]string, 0, len(cookies))
+			for _, item := range cookies {
+				parts = append(parts, (&http.Cookie{Name: item.Name, Value: item.Value}).String())
+			}
+			cookie = strings.Join(parts, "; ")
+		}
+		rewritten, err := s.rewritePlaylist(asset.camera, asset.upstream, asset.root, cookie, string(body))
 		if err != nil {
 			http.Error(w, "live playlist rejected", http.StatusBadGateway)
 			return
@@ -248,7 +260,7 @@ func (s *Service) serveLiveAsset(w http.ResponseWriter, r *http.Request, asset l
 	}
 }
 
-func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlist string) (string, error) {
+func (s *Service) rewritePlaylist(camera string, current, root *url.URL, cookie, playlist string) (string, error) {
 	lines := strings.Split(playlist, "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -256,7 +268,7 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 			continue
 		}
 		if !strings.HasPrefix(trimmed, "#") {
-			rewritten, err := s.registerLiveAsset(camera, current, root, trimmed)
+			rewritten, err := s.registerLiveAsset(camera, current, root, cookie, trimmed)
 			if err != nil {
 				return "", err
 			}
@@ -269,7 +281,7 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 				return match
 			}
 			parts := hlsURIAttribute.FindStringSubmatch(match)
-			rewritten, err := s.registerLiveAsset(camera, current, root, parts[1])
+			rewritten, err := s.registerLiveAsset(camera, current, root, cookie, parts[1])
 			if err != nil {
 				rewriteErr = err
 				return match
@@ -293,7 +305,7 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 	return rewritten, nil
 }
 
-func (s *Service) registerLiveAsset(camera string, current, root *url.URL, raw string) (string, error) {
+func (s *Service) registerLiveAsset(camera string, current, root *url.URL, cookie, raw string) (string, error) {
 	reference, err := url.Parse(raw)
 	if err != nil || reference.User != nil || reference.Fragment != "" || hasTraversal(reference) {
 		return "", fmt.Errorf("invalid live asset URI")
@@ -324,7 +336,7 @@ func (s *Service) registerLiveAsset(camera string, current, root *url.URL, raw s
 		}
 		delete(s.live, oldestID)
 	}
-	s.live[token] = liveAsset{camera: camera, upstream: resolved, root: root, expires: now.Add(liveAssetTTL)}
+	s.live[token] = liveAsset{camera: camera, upstream: resolved, root: root, cookie: cookie, expires: now.Add(liveAssetTTL)}
 	s.liveMu.Unlock()
 	return "/api/v1/live/" + url.PathEscape(camera) + "/segments/" + token, nil
 }

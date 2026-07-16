@@ -292,7 +292,7 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 		service.live[fmt.Sprintf("%032x", i)] = liveAsset{camera: "CAM-1", upstream: root.JoinPath("old.ts"), root: root, expires: time.Now().Add(time.Hour + time.Duration(i))}
 	}
 	service.liveMu.Unlock()
-	if _, err := service.registerLiveAsset("CAM-1", root.JoinPath("s.m3u8"), root, "new.ts"); err != nil {
+	if _, err := service.registerLiveAsset("CAM-1", root.JoinPath("s.m3u8"), root, "", "new.ts"); err != nil {
 		t.Fatal(err)
 	}
 	service.liveMu.Lock()
@@ -313,7 +313,12 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/index.m3u8") {
+			http.SetCookie(w, &http.Cookie{Name: "hls_session", Value: "private"})
 			_, _ = io.WriteString(w, "#EXTM3U\nsegment.ts\n")
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/segment.ts") && r.Header.Get("Cookie") == "hls_session=private" {
+			_, _ = io.WriteString(w, "frame")
 			return
 		}
 		http.NotFound(w, r)
@@ -341,5 +346,10 @@ func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
 	service.Handler().ServeHTTP(playlist, httptest.NewRequest(http.MethodGet, "/api/v1/live/CAM-1/playlist.m3u8?quality=low", nil))
 	if playlist.Code != http.StatusOK || proxiedLivePath.FindString(playlist.Body.String()) == "" {
 		t.Fatalf("dedicated playlist = %d %q", playlist.Code, playlist.Body.String())
+	}
+	segment := httptest.NewRecorder()
+	service.Handler().ServeHTTP(segment, httptest.NewRequest(http.MethodGet, proxiedLivePath.FindString(playlist.Body.String()), nil))
+	if segment.Code != http.StatusOK || segment.Body.String() != "frame" || segment.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("dedicated segment = %d %q cookie=%q", segment.Code, segment.Body.String(), segment.Header().Get("Set-Cookie"))
 	}
 }
