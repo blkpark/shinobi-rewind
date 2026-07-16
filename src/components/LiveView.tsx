@@ -93,6 +93,7 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
         {([['grid', '3×2'], ['primary', '주+5'], ['quad', '2×2'], ['single', '1대']] as const).map(([value, label]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => setLayout(value)} key={value}>{label}</button>)}
       </div>
       {!capability.lowQuality && capability.available && <small>저대역폭 스트림 미구성 · 고화질 fallback</small>}
+      {capability.available && <button type="button" className="ghost" onClick={() => window.dispatchEvent(new Event("shinobi-rewind:play-live"))}>전체 재생</button>}
       {failed && <button type="button" className="ghost" onClick={refresh}>목록 다시 확인</button>}
     </div>
     <div ref={gridRef} className={`live-grid live-${layout}`} aria-label="실시간 카메라 그리드">
@@ -193,6 +194,11 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
   }, [camera.id, disabledState, enabled, quality, retry]);
 
   useEffect(() => { const video = videoRef.current; if (video) video.muted = !audible; }, [audible]);
+  useEffect(() => {
+    const play = () => { const video = videoRef.current; if (video) void video.play().catch(() => updateState("offline")); };
+    window.addEventListener("shinobi-rewind:play-live", play);
+    return () => window.removeEventListener("shinobi-rewind:play-live", play);
+  }, []);
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
