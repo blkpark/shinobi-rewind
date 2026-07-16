@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
+import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -112,10 +113,91 @@ test("falls back to available cameras when saved IDs are stale", () => {
   assert.deepEqual(resolveCameraSelection(cameras, ["opaque-202", "CAM-201"]), ["opaque-202"]);
 });
 
+test("favorites survive serialization and corrupt storage fails closed", () => {
+  const favorite = { id: "CAM-201:now", cameraId: "CAM-201", at: "2026-07-16T05:31:43.000Z" };
+  assert.deepEqual(parseFavorites(serializeFavorites([favorite])), [favorite]);
+  assert.deepEqual(parseFavorites("not-json"), []);
+  assert.deepEqual(parseFavorites(JSON.stringify([{ id: "bad", cameraId: 1, at: "never" }])), []);
+});
+
+test("throwing browser storage fails closed without breaking boot or writes", () => {
+  const denied = { getItem() { throw new DOMException("denied", "SecurityError"); }, setItem() { throw new DOMException("full", "QuotaExceededError"); } };
+  assert.equal(safeStorageGet(denied, "layout"), null);
+  assert.equal(safeStorageSet(denied, "favorite", "[]"), false);
+  assert.equal(safeStorageSet(null, "view", "control"), false);
+});
+
+test("audio ownership is exclusive and custom speeds use bounded 0.05 steps", () => {
+  assert.equal(toggleAudible(null, "CAM-201", true), "CAM-201");
+  assert.equal(toggleAudible("CAM-201", "CAM-202", true), "CAM-202");
+  assert.equal(toggleAudible("CAM-202", "CAM-201", null), "CAM-202");
+  assert.equal(toggleAudible("CAM-202", "CAM-202", true), null);
+  assert.equal(clampRate(.1), .25); assert.equal(clampRate(5.2), 5); assert.equal(clampRate(1.234), 1.25);
+});
+
+test("transport arrows ignore form fields and timeline drag maps one commit target", () => {
+  const outside = { key: "ArrowRight", altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, target: { closest: () => null } };
+  const inside = { ...outside, target: { closest: () => ({}) } };
+  assert.equal(transportJump(outside), 5); assert.equal(transportJump({ ...outside, key: "ArrowLeft" }), -5); assert.equal(transportJump(inside), null);
+  assert.equal(timelineDragTime(at("12:00:00"), 100, 1000, 3600), at("11:54:00"));
+  assert.equal(timelinePointTime(at("10:00:00"), 350, 100, 1000, 3600), at("10:15:00"));
+});
+
+test("favorite jumps preserve selection and restore an available camera scope", () => {
+  assert.deepEqual(includeCameraScope(["CAM-201"], "CAM-202", ["CAM-201", "CAM-202"]), ["CAM-201", "CAM-202"]);
+  assert.deepEqual(includeCameraScope(["CAM-201"], "missing", ["CAM-201"]), ["CAM-201"]);
+  assert.deepEqual(includeCameraScope(["1", "2", "3"], "4", ["1", "2", "3", "4"], 3), ["4", "1", "2"]);
+});
+
+test("URL time and custom rate drafts reject temporary or malformed values", () => {
+  assert.equal(parseKSTSecond("2026-07-16", "14:31:43"), at("14:31:43") + 86400);
+  assert.equal(parseKSTSecond("2026-07-16", ""), null);
+  assert.equal(parseKSTSecond("2026-02-30", "10:00"), null);
+  assert.equal(parseKSTSecond("2026-07-16", "25:00"), null);
+  assert.equal(parseRateDraft(""), null); assert.equal(parseRateDraft("oops"), null); assert.equal(parseRateDraft("1.23"), 1.25);
+});
+
+test("calendar month navigation clamps end-of-month dates", () => {
+  assert.equal(shiftMonth("2026-01-31", 1), "2026-02-28");
+  assert.equal(shiftMonth("2026-03-31", -1), "2026-02-28");
+});
+
+test("calendar states distinguish detector off, zero events, missing and partial data", () => {
+  assert.equal(dayState({ loading: false, failed: "none", capability: "detector_off", events: 0 }), "detector_off");
+  assert.equal(dayState({ loading: false, failed: "none", capability: "available", events: 0 }), "zero_events");
+  assert.equal(dayState({ loading: false, failed: "all", capability: "available", events: 0 }), "no_data");
+  assert.equal(dayState({ loading: false, failed: "partial", capability: "available", events: 3 }), "partial");
+});
+
+test("PiP capability keeps fullscreen and unavailable fallbacks honest", () => {
+  assert.equal(pipMode(true, true), "pip");
+  assert.equal(pipMode(true, false), "fullscreen");
+  assert.equal(pipMode(false, true), "unavailable");
+});
+
+test("display requests report actual resolve and rejection outcomes", async () => {
+  const messages = [];
+  assert.equal(await reportDisplayRequest(() => Promise.resolve(), "opened", "blocked", (message) => messages.push(message)), true);
+  assert.equal(await reportDisplayRequest(() => Promise.reject(new Error("denied")), "opened", "blocked", (message) => messages.push(message)), false);
+  assert.deepEqual(messages, ["opened", "blocked"]);
+});
+
+test("timeline favorites include only global and selected-camera marks on the KST day", () => {
+  const favorites = [
+    { id: "global", cameraId: null, at: "2026-07-15T05:00:00Z" },
+    { id: "selected", cameraId: "CAM-201", at: "2026-07-15T06:00:00Z" },
+    { id: "hidden-camera", cameraId: "CAM-202", at: "2026-07-15T07:00:00Z" },
+    { id: "hidden-day", cameraId: null, at: "2026-07-14T05:00:00Z" },
+  ];
+  assert.deepEqual(filterTimelineFavorites(favorites, ["CAM-201"], "2026-07-15").map((item) => item.id), ["global", "selected"]);
+});
+
 test("player and timeline keep bounded recovery, fullscreen, and drag wiring", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
   const timeline = readFileSync(new URL("../src/components/Timeline.tsx", import.meta.url), "utf8");
+  const search = readFileSync(new URL("../src/components/SearchView.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
   assert.match(app, /effectivePlaying = playing && !primarySyncing/);
@@ -129,10 +211,24 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
   assert.match(grid, /requestFullscreen/);
+  assert.match(grid, /pictureInPictureEnabled/);
+  assert.match(grid, /requestPictureInPicture/);
+  assert.match(grid, /requestFullscreen/);
+  assert.match(grid, /reportDisplayRequest/);
+  assert.match(grid, /className="camera-actions"[\s\S]*현재 시각 즐겨찾기[\s\S]*소리[\s\S]*PiP[\s\S]*전체화면/);
+  assert.match(styles, /\.supporting-camera header \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto; grid-template-rows: 22px 26px/);
   assert.match(grid, /ResizeObserver/);
   assert.match(grid, /compact-primary/);
   assert.match(timeline, /role="slider"[\s\S]*onPointerDown=.*onPointerMove=.*onPointerUp=.*onKeyDown=/);
-  assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)/);
+  assert.match(timeline, /setPointerCapture/);
+  assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)\?\.getBoundingClientRect\(\)/);
+  assert.match(timeline, /timelineDragTime/);
+  assert.match(timeline, /timelinePointTime/);
+  assert.match(timeline, /filterTimelineFavorites\(favorites, selectedCameraIds, day\)/);
+  assert.match(timeline, /fixed-playhead/);
+  assert.match(timeline, /onSeek\(target\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);
-  assert.match(timeline, /end: event\.end \|\| event\.at/);
+  assert.match(timeline, /end: item\.end \|\| item\.at/);
+  assert.match(search, /goMonth\(-1\)[\s\S]*goMonth\(1\)[\s\S]*today/);
+  assert.match(search, /value="recorded">녹화 있음/);
 });

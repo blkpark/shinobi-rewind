@@ -249,6 +249,26 @@ func TestDetectorRequiresDetectorFlag(t *testing.T) {
 	}
 }
 
+func TestExplicitAudioMetadataNeverGuesses(t *testing.T) {
+	for _, test := range []struct {
+		raw  string
+		want *bool
+	}{
+		{`{"hasAudio":true}`, boolPointer(true)},
+		{`"{\"audio\":\"0\"}"`, boolPointer(false)},
+		{`{"audio_codec":"aac"}`, boolPointer(true)},
+		{`{"unrelated":"value"}`, nil},
+		{`bad`, nil},
+	} {
+		got := explicitAudio(json.RawMessage(test.raw))
+		if (got == nil) != (test.want == nil) || got != nil && *got != *test.want {
+			t.Fatalf("explicitAudio(%s) = %v, want %v", test.raw, got, test.want)
+		}
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
+
 func TestEventsAcceptRawRowsAndLegacyEnvelopeWithStableOpaqueIDs(t *testing.T) {
 	var opaque string
 	for _, payload := range []string{

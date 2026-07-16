@@ -1,0 +1,113 @@
+export const minRate = .25;
+export const maxRate = 5;
+
+export function safeStorageGet(storage, key) {
+  try { return storage?.getItem(key) ?? null; } catch { return null; }
+}
+
+export function safeStorageSet(storage, key, value) {
+  try { storage?.setItem(key, value); return Boolean(storage); } catch { return false; }
+}
+
+export async function reportDisplayRequest(request, success, failure, report) {
+  try { await request(); report(success); return true; } catch { report(failure); return false; }
+}
+
+export function clampRate(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.round(Math.max(minRate, Math.min(maxRate, parsed)) * 20) / 20;
+}
+
+export function parseRateDraft(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? clampRate(parsed) : null;
+}
+
+export function parseKSTSecond(day, clock) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || "");
+  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(clock || "");
+  if (!dateMatch || !timeMatch) return null;
+  const year = Number(dateMatch[1]), month = Number(dateMatch[2]), date = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]), minute = Number(timeMatch[2]), second = Number(timeMatch[3] || 0);
+  if (month < 1 || month > 12 || date < 1 || date > new Date(Date.UTC(year, month, 0)).getUTCDate() || hour > 23 || minute > 59 || second > 59) return null;
+  const value = Date.parse(`${day}T${clock.length === 5 ? `${clock}:00` : clock}+09:00`) / 1000;
+  return Number.isFinite(value) ? value : null;
+}
+
+export function parseFavorites(raw) {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter((item) => item && typeof item.id === "string" && (item.cameraId === null || typeof item.cameraId === "string") && typeof item.at === "string" && Number.isFinite(Date.parse(item.at)));
+  } catch {
+    return [];
+  }
+}
+
+export function serializeFavorites(items) {
+  return JSON.stringify(items.map(({ id, cameraId, at, label }) => ({ id, cameraId, at, ...(label ? { label } : {}) })));
+}
+
+export function toggleAudible(current, cameraId, hasAudio) {
+  if (hasAudio !== true) return current;
+  return current === cameraId ? null : cameraId;
+}
+
+export function isFormTarget(target) {
+  return Boolean(target?.closest?.("input, select, textarea, button, [contenteditable='true']"));
+}
+
+export function transportJump(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || isFormTarget(event.target)) return null;
+  if (event.key === "ArrowLeft") return -5;
+  if (event.key === "ArrowRight") return 5;
+  return null;
+}
+
+export function timelineDragTime(anchor, deltaPixels, width, span) {
+  if (!Number.isFinite(width) || width <= 0) return anchor;
+  return anchor - deltaPixels / width * span;
+}
+
+export function timelinePointTime(visibleStart, clientX, trackLeft, trackWidth, span) {
+  if (!Number.isFinite(trackWidth) || trackWidth <= 0) return visibleStart + span / 2;
+  return visibleStart + Math.max(0, Math.min(1, (clientX - trackLeft) / trackWidth)) * span;
+}
+
+export function includeCameraScope(selected, cameraId, available, max = 6) {
+  if (!cameraId || !available.includes(cameraId) || selected.includes(cameraId)) return selected;
+  return selected.length < max ? [...selected, cameraId] : [cameraId, ...selected.slice(0, max - 1)];
+}
+
+export function shiftMonth(day, amount) {
+  const parsed = parseKSTSecond(day, "00:00:00");
+  if (parsed === null) return day;
+  const [year, month, date] = day.split("-").map(Number);
+  const first = new Date(Date.UTC(year, month - 1 + amount, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(date, last)).padStart(2, "0")}`;
+}
+
+export function filterTimelineFavorites(items, cameraIds, day) {
+  return items.filter((item) => {
+    const time = Date.parse(item.at);
+    if (!Number.isFinite(time) || item.cameraId !== null && !cameraIds.includes(item.cameraId)) return false;
+    return new Date(time).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === day;
+  });
+}
+
+export function dayState({ loading, failed, capability, events }) {
+  if (loading) return "loading";
+  if (failed === "all") return "no_data";
+  if (failed === "partial") return "partial";
+  if (capability === "detector_off") return "detector_off";
+  if (capability !== "available") return "no_data";
+  return events > 0 ? "events" : "zero_events";
+}
+
+export function pipMode(hasVideo, nativeSupported) {
+  return !hasVideo ? "unavailable" : nativeSupported ? "pip" : "fullscreen";
+}

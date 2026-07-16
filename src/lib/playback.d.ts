@@ -1,4 +1,4 @@
-export type PlaybackSegment = { id: string; start: string; end: string; state: string };
+export type PlaybackSegment = { id: string; start: string; end: string; state: string; hasAudio?: boolean | null };
 export type FocusState = { until: Record<string, number>; pulseUntil: Record<string, number> };
 export function segmentAt(segments: PlaybackSegment[], masterSeconds: number): PlaybackSegment | undefined;
 export function videoOffset(segment: PlaybackSegment | undefined, masterSeconds: number): number;
