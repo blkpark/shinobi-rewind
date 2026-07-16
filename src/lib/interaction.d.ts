@@ -7,6 +7,7 @@ export function clampRate(value: unknown): number;
 export function parseRateDraft(value: string): number | null;
 export function parseKSTSecond(day: string, clock: string): number | null;
 export function kstDateAt(seconds: number): string;
+export function rebaseKSTDate(seconds: number, day: string): number;
 export function parseFavorites(raw: string | null): Favorite[];
 export function serializeFavorites(items: Favorite[]): string;
 export function toggleAudible(current: string | null, cameraId: string, hasAudio: boolean | null): string | null;

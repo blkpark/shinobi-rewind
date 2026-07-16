@@ -7,7 +7,7 @@ import { SearchView } from "./components/SearchView";
 import { LiveView } from "./components/LiveView";
 import { rewindAPI } from "./lib/api";
 import { cameraTitle, resolveCameraSelection } from "./lib/camera.js";
-import { clampRate, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
+import { clampRate, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
 import { applyFocus, canCorrectMedia, driftCorrection, expireFocus, monotonicMaster, segmentAt, simultaneousFocus, videoOffset, type FocusState } from "./lib/playback.js";
 import type { Camera, Capability, Event, Segment, View } from "./lib/types";
 
@@ -132,7 +132,7 @@ export function App() {
 	}, [cameras, selected, view]);
 
   useEffect(() => {
-    setMaster((current) => kstSecond(date, formatTime(current)));
+    setMaster((current) => rebaseKSTDate(current, date));
   }, [date]);
 
   const urlSecond = Math.floor(master);

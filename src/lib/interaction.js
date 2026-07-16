@@ -40,6 +40,12 @@ export function kstDateAt(seconds) {
   return new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 }
 
+export function rebaseKSTDate(seconds, day) {
+  if (kstDateAt(seconds) === day) return seconds;
+  const clock = new Date(seconds * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false });
+  return parseKSTSecond(day, clock) ?? seconds;
+}
+
 export function parseFavorites(raw) {
   if (!raw) return [];
   try {
