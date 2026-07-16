@@ -14,13 +14,17 @@ import (
 )
 
 type testSource struct {
-	segment Segment
-	cameras []Camera
-	ready   error
+	segment       Segment
+	cameras       []Camera
+	ready         error
+	emptyTimeline bool
 }
 
 func (t testSource) Cameras(context.Context) ([]Camera, error) { return t.cameras, nil }
 func (t testSource) Timeline(_ context.Context, day time.Time, camera string) (Timeline, error) {
+	if t.emptyTimeline {
+		return Timeline{CameraID: camera}, nil
+	}
 	return Timeline{CameraID: camera, Segments: []Segment{{ID: "day", CameraID: camera, Start: day, End: day.Add(time.Minute), State: "recorded"}}}, nil
 }
 func (t testSource) Events(context.Context, time.Time, time.Time, string) ([]Event, error) {
@@ -174,6 +178,25 @@ func TestKSTBoundaryAndAllowlist(t *testing.T) {
 		if !strings.Contains(raw, "14:59") && res.Code != http.StatusOK {
 			t.Fatalf("boundary status = %d", res.Code)
 		}
+	}
+}
+
+func TestTimelineSerializesEmptySegmentsAsArray(t *testing.T) {
+	s := NewService(Config{}, testSource{cameras: []Camera{{ID: "CAM-1"}}, emptyTimeline: true})
+	res := httptest.NewRecorder()
+	s.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/api/v1/timeline?date=2026-07-15&camera=CAM-1", nil))
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", res.Code, res.Body.String())
+	}
+	var body struct {
+		Segments json.RawMessage `json:"segments"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if string(body.Segments) != "[]" {
+		t.Fatalf("segments = %s, want []", body.Segments)
 	}
 }
 
