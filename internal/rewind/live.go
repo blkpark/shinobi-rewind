@@ -32,7 +32,7 @@ type liveAsset struct {
 }
 
 func (s *Service) liveCapabilities(w http.ResponseWriter, _ *http.Request) {
-	available := !s.config.Demo && s.config.ShinobiURL != nil
+	available := !s.config.Demo && (s.config.LiveHLSURL != nil || s.config.ShinobiURL != nil)
 	var transport *string
 	message := "실시간 스트림이 구성되지 않았습니다."
 	if available {
@@ -43,7 +43,7 @@ func (s *Service) liveCapabilities(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available":  available,
 		"transport":  transport,
-		"lowQuality": available && s.config.ShinobiLowChannel != "",
+		"lowQuality": available && (s.config.LiveHLSURL != nil || s.config.ShinobiLowChannel != ""),
 		"message":    message,
 	})
 }
@@ -121,7 +121,7 @@ func (s *Service) livePlaylist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "requested live quality is unavailable", http.StatusUnprocessableEntity)
 		return
 	}
-	if quality == "low" && s.config.ShinobiLowChannel == "" {
+	if quality == "low" && s.config.LiveHLSURL == nil && s.config.ShinobiLowChannel == "" {
 		http.Error(w, "requested live quality is unavailable", http.StatusUnprocessableEntity)
 		return
 	}
@@ -148,6 +148,17 @@ func (s *Service) liveSegment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) liveURLs(camera, quality string) (*url.URL, *url.URL, error) {
+	if s.config.LiveHLSURL != nil {
+		if !safeURLComponent(camera) {
+			return nil, nil, fmt.Errorf("invalid live path component")
+		}
+		if quality == "" {
+			quality = "high"
+		}
+		root := s.config.LiveHLSURL.JoinPath(strings.ToLower(camera) + "_" + quality)
+		root.RawQuery, root.Fragment = "", ""
+		return root.JoinPath("index.m3u8"), root, nil
+	}
 	if s.config.ShinobiURL == nil || s.config.ShinobiKey == "" || s.config.ShinobiGroup == "" {
 		return nil, nil, fmt.Errorf("live upstream is not configured")
 	}
@@ -273,6 +284,9 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 	}
 	if s.config.ShinobiURL != nil && strings.Contains(rewritten, s.config.ShinobiURL.Host) {
 		return "", fmt.Errorf("playlist contains upstream host")
+	}
+	if s.config.LiveHLSURL != nil && strings.Contains(rewritten, s.config.LiveHLSURL.Host) {
+		return "", fmt.Errorf("playlist contains live upstream host")
 	}
 	return rewritten, nil
 }

@@ -16,6 +16,7 @@ type Config struct {
 	ShinobiGroup      string
 	ShinobiKey        string
 	ShinobiLowChannel string
+	LiveHLSURL        *url.URL
 	HeaderTimeout     time.Duration
 }
 
@@ -44,6 +45,13 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("SHINOBI_URL must not contain credentials or API keys")
 	}
 	c.ShinobiURL = u
+	if rawLive := os.Getenv("LIVE_HLS_URL"); rawLive != "" {
+		live, err := url.Parse(rawLive)
+		if err != nil || live.Scheme == "" || live.Host == "" || live.User != nil || live.RawQuery != "" || live.Fragment != "" {
+			return Config{}, fmt.Errorf("LIVE_HLS_URL must be an absolute credential-free URL")
+		}
+		c.LiveHLSURL = live
+	}
 	return c, nil
 }
 

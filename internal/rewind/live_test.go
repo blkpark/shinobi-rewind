@@ -309,3 +309,26 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 		t.Fatalf("demo capabilities = %q", response.Body.String())
 	}
 }
+
+func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL + "/hls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(Config{LiveHLSURL: base}, testSource{cameras: []Camera{{ID: "CAM-1"}}})
+	high, highRoot, err := service.liveURLs("CAM-1", "high")
+	if err != nil || !strings.HasSuffix(high.Path, "/hls/cam-1_high/index.m3u8") || !strings.HasSuffix(highRoot.Path, "/hls/cam-1_high") {
+		t.Fatalf("high live URL = %v, root = %v, err = %v", high, highRoot, err)
+	}
+	low, lowRoot, err := service.liveURLs("CAM-1", "low")
+	if err != nil || !strings.HasSuffix(low.Path, "/hls/cam-1_low/index.m3u8") || !strings.HasSuffix(lowRoot.Path, "/hls/cam-1_low") {
+		t.Fatalf("low live URL = %v, root = %v, err = %v", low, lowRoot, err)
+	}
+	response := httptest.NewRecorder()
+	service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/live/capabilities", nil))
+	if !strings.Contains(response.Body.String(), `"lowQuality":true`) {
+		t.Fatalf("capabilities = %q", response.Body.String())
+	}
+}
