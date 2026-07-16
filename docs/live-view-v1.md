@@ -1,6 +1,6 @@
 # 실시간 관제 V1 제품 명세
 
-상태: 기획 초안  
+상태: P0 로컬 구현·검증 완료, 운영 HLS proof 차단  
 작성일: 2026-07-16  
 대상: Shinobi Rewind 내부 운영자
 
@@ -83,10 +83,10 @@ Chrome에서 native HLS 지원을 가정하지 않는다. 구현 착수 전 아�
 
 - `GET /api/v1/live/capabilities`
 - `GET /api/v1/live/cameras`
-- `GET /api/v1/live/{opaqueCameraId}/playlist.m3u8?quality=low|high`
-- `GET /api/v1/live/{opaqueCameraId}/segments/{opaqueSegmentId}`
+- `GET /api/v1/live/{allowlistedCameraId}/playlist.m3u8?quality=low|high`
+- `GET /api/v1/live/{allowlistedCameraId}/segments/{opaqueSegmentId}`
 
-playlist rewrite와 segment lookup은 server-side registry를 사용한다. upstream host, API key, group key, monitor id 조합과 raw RTSP/HLS URL을 response, HTML, query, error, structured log에 넣지 않는다.
+playlist rewrite와 segment lookup은 server-side registry를 사용한다. camera route id는 기존 검색·녹화·layout 계약의 allowlisted public id(`CAM-###`)를 재사용하며 credential이 아니다. 별도 camera id mapping은 P0에서 만들지 않고, upstream asset path와 segment id만 opaque 처리한다. upstream host, API key, group key와 raw RTSP/HLS URL을 response, HTML, query, error, structured log에 넣지 않는다.
 
 ### 운영 전제
 
@@ -167,6 +167,13 @@ playlist rewrite와 segment lookup은 server-side registry를 사용한다. upst
 - server-side transcoding
 - 외부 WAN 공개
 - detector trust gate 이전의 motion 자동 포커스
+
+## 2026-07-16 구현 증빙과 남은 gate
+
+- Go same-origin HLS proxy는 nested playlist, `EXT-X-KEY`, `EXT-X-MAP`을 포함한 URI rewrite, exact host/root pinning, traversal·redirect 차단, 1MiB playlist 제한, Range/HEAD/416/cancel streaming, sanitized 403, 5분 TTL/4,096개 registry bound를 구현했다.
+- live frontend는 독립 clock/state, 4개 layout, primary swap, camera별 retry/stale 상태, hidden-tab cleanup, lazy `hls.js`, single audio, PiP/fullscreen state sync, completed recording handoff를 구현했다.
+- `go test ./...`, race, vet, frontend typecheck, 25 tests, build가 통과했다. demo 6대로 1280×720 3×2/주+5 no-scroll, primary swap, visible-only summary, console error 0건을 브라우저에서 확인했다.
+- 운영 `watch_stream` 권한, CAM-201~206 RTSP credential 회전, static LQ channel이 준비되지 않아 실제 HLS first-frame/30분 안정성/camera disconnect/LQ→HQ hold/session cleanup/accessibility proof는 아직 차단 상태다. 이 gate 전에는 배포 완료로 판정하지 않는다.
 
 ## 조사 근거
 

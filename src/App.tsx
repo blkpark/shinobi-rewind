@@ -1,9 +1,10 @@
-import { Info, MagnifyingGlass, Pause, Play, ShieldCheck, SkipBack, SkipForward, Star } from "@phosphor-icons/react";
+import { Broadcast, Info, MagnifyingGlass, Pause, Play, ShieldCheck, SkipBack, SkipForward, Star } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { CameraGrid } from "./components/CameraGrid";
 import { Timeline } from "./components/Timeline";
 import { SearchView } from "./components/SearchView";
+import { LiveView } from "./components/LiveView";
 import { rewindAPI } from "./lib/api";
 import { cameraTitle, resolveCameraSelection } from "./lib/camera.js";
 import { clampRate, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
@@ -36,8 +37,10 @@ function initialState() {
   const date = parseKSTSecond(requestedDate, "00:00:00") === null ? kstDate : requestedDate;
   const clock = query.get("time") || "14:31:03";
   const layout = savedLayout();
+  const storedView = query.get("view") || safeStorageGet(browserStorage(), "shinobi-rewind:view");
+  const view: View = storedView === "live" || storedView === "search" || storedView === "control" ? storedView : "control";
   return {
-    view: (query.get("view") as View) || (safeStorageGet(browserStorage(), "shinobi-rewind:view") as View) || "control",
+    view,
     date, master: parseKSTSecond(date, clock) ?? kstSecond(date, "14:31:03"), selected: parseList(query.get("cameras")),
     rate: clampRate(query.get("rate") || 1), autoFocus: query.get("motion") !== "off", layout,
   };
@@ -69,12 +72,13 @@ export function App() {
   const [favorites, setFavorites] = useState<Favorite[]>(() => parseFavorites(safeStorageGet(browserStorage(), favoritesKey)));
   const [audibleCamera, setAudibleCamera] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [liveNow, setLiveNow] = useState(() => Date.now() / 1000);
   const videos = useRef<Record<string, HTMLVideoElement>>({});
 	const mediaRecovery = useRef(false);
 	const masterRef = useRef(initial.master);
 	const focusMasterRef = useRef(initial.master);
 	const clockRef = useRef({ master: initial.master, wall: performance.now() });
-  const effectivePlaying = playing && !primarySyncing;
+  const effectivePlaying = view !== "live" && playing && !primarySyncing;
 
   const orderedIds = useMemo(() => cameras.map((camera) => camera.id), [cameras]);
   const shownCameras = useMemo(() => cameras.filter((camera) => selected.includes(camera.id)), [cameras, selected]);
@@ -95,6 +99,13 @@ export function App() {
 	}, []);
 
   useEffect(() => {
+    if (view !== "live") return;
+    setLiveNow(Date.now() / 1000);
+    const timer = window.setInterval(() => setLiveNow(Date.now() / 1000), 1000);
+    return () => window.clearInterval(timer);
+  }, [view]);
+
+  useEffect(() => {
     if (!shownCameras.length) { setPrimaryCamera(""); return; }
     if (!shownCameras.some((camera) => camera.id === primaryCamera)) setPrimaryCamera(shownCameras[0].id);
   }, [shownCameras, primaryCamera]);
@@ -113,11 +124,12 @@ export function App() {
   }, [capability.motion, selected]);
 
 	useEffect(() => {
+		if (view === "live") return;
 		if (!cameras.length || !selected.length) return;
 		let current = true;
 		void rewindAPI.capabilities(selected).then((value) => { if (current) setCapability(value); }).catch(() => { if (current) setCapability({ demo: false, motion: "unavailable", message: "모션 데이터 확인 불가" }); });
 		return () => { current = false; };
-	}, [cameras, selected]);
+	}, [cameras, selected, view]);
 
   useEffect(() => {
     setMaster((current) => kstSecond(date, formatTime(current)));
@@ -131,6 +143,7 @@ export function App() {
   }, [view, date, urlSecond, selected, rate, autoFocus]);
 
   useEffect(() => {
+    if (view === "live") { setSegments([]); setTimelineFailed([]); setTimelineLoading(false); return; }
     if (!selected.length) { setSegments([]); setTimelineFailed([]); setTimelineLoading(false); return; }
     let current = true;
     setSegments([]);
@@ -147,9 +160,10 @@ export function App() {
       }
     });
     return () => { current = false; };
-  }, [date, selected, timelineRevision]);
+  }, [date, selected, timelineRevision, view]);
 
   useEffect(() => {
+    if (view === "live") { setEvents([]); setEventState("idle"); return; }
     if (capability.motion !== "available" || !selected.length) { setEvents([]); setEventState("idle"); return; }
     let current = true;
     const from = isoAt(kstSecond(date, "00:00:00"));
@@ -161,7 +175,7 @@ export function App() {
       setEventState(ok.length === results.length ? "ready" : ok.length ? "partial" : "error");
     });
 		return () => { current = false; };
-  }, [capability.motion, date, selected]);
+  }, [capability.motion, date, selected, view]);
 
 	useEffect(() => {
 		if (!effectivePlaying) return;
@@ -264,15 +278,22 @@ export function App() {
   };
   const setAudio = (cameraId: string, hasAudio: boolean | null) => setAudibleCamera((current) => toggleAudible(current, cameraId, hasAudio));
   const kstDateAt = (seconds: number) => new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const openRecorded = (cameraId: string, at: string) => {
+    const target = Date.parse(at) / 1000;
+    if (!Number.isFinite(target)) { setNotice("최근 녹화 시각을 확인할 수 없습니다."); return; }
+    setSelected((current) => includeCameraScope(current, cameraId, cameras.map((camera) => camera.id)));
+    setPrimaryCamera(cameraId); setDate(kstDateAt(target)); seekTo(target); setView("control");
+  };
+  const headerSecond = view === "live" ? liveNow : master;
 
   return <main className="console">
     <header className="topbar">
       <div className="brand"><ShieldCheck size={23} weight="bold" aria-hidden="true" />영상 관제 콘솔</div>
-      <nav aria-label="주요 보기"><button className={view === "search" ? "active" : ""} onClick={() => setView("search")}><MagnifyingGlass aria-hidden="true" />사건 검색</button><button className={view === "control" ? "active" : ""} onClick={() => setView("control")}><Play aria-hidden="true" />동기 관제</button></nav>
-		<div className="clock">{date} · KST <strong>{formatTime(master)}</strong></div>
-		<button className="ghost" onClick={() => setView("search")}>시간 점프</button>
+      <nav aria-label="주요 보기"><button className={view === "live" ? "active" : ""} onClick={() => setView("live")}><Broadcast aria-hidden="true" />실시간 관제</button><button className={view === "search" ? "active" : ""} onClick={() => setView("search")}><MagnifyingGlass aria-hidden="true" />사건 검색</button><button className={view === "control" ? "active" : ""} onClick={() => setView("control")}><Play aria-hidden="true" />녹화 관제</button></nav>
+		<div className="clock">{kstDateAt(headerSecond)} · KST <strong>{formatTime(headerSecond)}</strong></div>
+		{view !== "live" && <button className="ghost" onClick={() => setView("search")}>시간 점프</button>}
     </header>
-    {view === "search" ? <SearchView date={date} cameras={cameras} selected={selected} segments={segments} events={events} favorites={favorites} capability={capability} eventState={eventState} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, allCameras: cameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, jumpFavorite, audibleCamera: rate > 4 ? null : audibleCamera, setAudio, setNotice, changeDate }} />}
+    {view === "live" ? <LiveView selected={selected} onRecorded={openRecorded} onNotice={setNotice} /> : view === "search" ? <SearchView date={date} cameras={cameras} selected={selected} segments={segments} events={events} favorites={favorites} capability={capability} eventState={eventState} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, allCameras: cameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, jumpFavorite, audibleCamera: rate > 4 ? null : audibleCamera, setAudio, setNotice, changeDate }} />}
     {notice && <div className="notice" role="status" onAnimationEnd={() => setNotice("")}>{notice}</div>}
   </main>;
 }
