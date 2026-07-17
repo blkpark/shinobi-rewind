@@ -326,6 +326,14 @@ func (s *Service) registerLiveAsset(camera string, current, root *url.URL, cooki
 			delete(s.live, id)
 		}
 	}
+	for id, asset := range s.live {
+		if asset.camera == camera && asset.upstream.String() == resolved.String() && asset.root.String() == root.String() && asset.cookie == cookie {
+			asset.expires = now.Add(liveAssetTTL)
+			s.live[id] = asset
+			s.liveMu.Unlock()
+			return "/api/v1/live/" + url.PathEscape(camera) + "/segments/" + id, nil
+		}
+	}
 	if len(s.live) >= maxLiveAssets {
 		var oldestID string
 		var oldestExpiry time.Time
@@ -349,6 +357,8 @@ func (s *Service) takeLiveAsset(camera, token string) (liveAsset, bool) {
 		delete(s.live, token)
 		return liveAsset{}, false
 	}
+	asset.expires = time.Now().Add(liveAssetTTL)
+	s.live[token] = asset
 	return asset, true
 }
 

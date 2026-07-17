@@ -75,6 +75,11 @@ func TestLiveHLSProxyRewritesNestedAssetsAndStreamsOpaqueSegment(t *testing.T) {
 	if variantPath == "" || strings.Contains(playlist.Body.String(), upstream.URL) || strings.Contains(playlist.Body.String(), "sensitive-api-key") || strings.Contains(playlist.Body.String(), "variant.m3u8") {
 		t.Fatalf("playlist was not safely rewritten: %q", playlist.Body.String())
 	}
+	playlistAgain := httptest.NewRecorder()
+	service.Handler().ServeHTTP(playlistAgain, httptest.NewRequest(http.MethodGet, "/api/v1/live/CAM-1/playlist.m3u8?quality=high", nil))
+	if next := proxiedLivePath.FindString(playlistAgain.Body.String()); next != variantPath {
+		t.Fatalf("stable live asset got a new token: %q != %q", next, variantPath)
+	}
 
 	variant := httptest.NewRecorder()
 	service.Handler().ServeHTTP(variant, httptest.NewRequest(http.MethodGet, variantPath, nil))
