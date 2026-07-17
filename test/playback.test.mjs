@@ -251,6 +251,7 @@ test("live view isolates camera sessions and keeps state labels honest", () => {
   assert.match(live, /\[\['low', '저화질'\], \['high', '고화질'\]\]/);
   assert.match(live, /const starts = videos\.map\(\(video\) => video\.play\(\)\)/);
   assert.match(live, /fullscreenActive \? "high" : quality/);
+  assert.match(live, /const staleTimer = window\.setInterval\(\(\) => \{\s+markLive\(\);/);
   assert.match(live, /hls\?\.destroy\(\)/);
   assert.match(live, /camera\.hasAudio === false \? `\$\{label\.title\} 음성 없음` : `\$\{label\.title\} 음성 정보 확인 불가`/);
   assert.match(live, /aria-pressed=\{pipActive\}/);

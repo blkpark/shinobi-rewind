@@ -192,6 +192,7 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
     video.addEventListener("stalled", waiting);
     video.addEventListener("error", mediaError);
     const staleTimer = window.setInterval(() => {
+      markLive();
       const last = lastProgressRef.current;
       if (last) setLastFrameAt(last);
       if (last && Date.now() - last > 8000) updateState("stale");
