@@ -237,7 +237,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(timeline, /event\.stopPropagation\(\)/);
   assert.match(timeline, /end: item\.end \|\| item\.at/);
   assert.match(search, /goMonth\(-1\)[\s\S]*goMonth\(1\)[\s\S]*today/);
-  assert.match(search, /value="recorded">녹화 있음/);
+  assert.match(search, /value="recorded">\{text\("녹화 있음", "Recorded"\)\}/);
 });
 
 test("live view isolates camera sessions and keeps state labels honest", () => {
@@ -247,13 +247,13 @@ test("live view isolates camera sessions and keeps state labels honest", () => {
   assert.match(live, /visible\.filter\(\(camera\) => statuses\[camera\.id\] === "live"\)/);
   assert.match(live, /visibilitychange/);
   assert.match(live, /retryAll/);
-  assert.match(live, /aria-label="실시간 화질"/);
-  assert.match(live, /\[\['low', '저화질'\], \['high', '고화질'\]\]/);
+  assert.match(live, /aria-label=\{text\("실시간 화질", "Live quality"\)\}/);
+  assert.match(live, /\[\['low', '저화질', 'Low'\], \['high', '고화질', 'High'\]\]/);
   assert.match(live, /const starts = videos\.map\(\(video\) => video\.play\(\)\)/);
   assert.match(live, /fullscreenActive \? "high" : quality/);
   assert.match(live, /const staleTimer = window\.setInterval\(\(\) => \{\s+markLive\(\);/);
   assert.match(live, /hls\?\.destroy\(\)/);
-  assert.match(live, /camera\.hasAudio === false \? `\$\{label\.title\} 음성 없음` : `\$\{label\.title\} 음성 정보 확인 불가`/);
+  assert.match(live, /camera\.hasAudio === false \? `\$\{label\.title\} \$\{text\("음성 없음", "no audio"\)\}`/);
   assert.match(live, /aria-pressed=\{pipActive\}/);
   assert.match(live, /aria-pressed=\{fullscreenActive\}/);
 });

@@ -2,6 +2,8 @@
 
 Companion for finding Shinobi recordings by exact time, reviewing up to six cameras on one shared timeline, and preserving explicitly favorited segments on a separate archive drive.
 
+The operator UI supports Korean and English. The language switch in the top bar is saved in browser storage; first-time visitors use their browser language, with English as the fallback.
+
 ## Run
 
 `make run` builds the embedded React UI and launches demo mode at `http://localhost:8080`. Demo mode includes recording, gap, and corrupt timeline states and deliberately reports `모션 데이터 사용 불가 · detector off`.
@@ -9,6 +11,10 @@ Companion for finding Shinobi recordings by exact time, reviewing up to six came
 For a live, read-only installation copy `.env.example` to `.env`, set `DEMO_MODE=false`, and provide `SHINOBI_URL`, `SHINOBI_GROUP_KEY`, and `SHINOBI_API_KEY` through your secret manager. Prefer a dedicated RTSP-to-HLS bridge through `LIVE_HLS_URL`; it keeps live-view reconnects independent from Shinobi recording. Bridge path names are derived server-side from the camera ID and quality. `SHINOBI_LOW_STREAM_CHANNEL` remains an optional compatibility path and must not share a multi-input FFmpeg process with recording cameras. Credentials and upstream recording paths are never sent to the browser or included in request logs.
 
 The included Compose example joins an existing `cctv` Docker network and binds to `127.0.0.1:8092` by default. Override `SHINOBI_REWIND_BIND_IP` and `SHINOBI_REWIND_PORT` in the deployment environment; keep site-specific addresses out of the public repository.
+
+## Security boundary
+
+Shinobi Rewind is designed for a trusted LAN or an authenticated VPN/reverse proxy. It does not provide user authentication. In particular, archive creation is a write operation, so never expose the service directly to the public internet. Keep the default loopback bind unless an external access-control layer protects every route. See [SECURITY.md](SECURITY.md) before operating with real cameras.
 
 Set `ARCHIVE_ROOT` to a dedicated writable directory to enable favorite preservation. The service streams the completed original segment from Shinobi into a `.part` file, verifies its byte count and SHA-256 digest, and atomically publishes only the verified copy. The archive is intentionally independent of browser favorite removal and exposes no permanent-delete API while the LAN service has no authentication boundary.
 
@@ -23,6 +29,10 @@ The control view keeps one active video per camera, supports native PiP with ful
 ## Checks
 
 Run `make fmt test lint typecheck build`. The frontend uses only React/Vite/TypeScript; backend uses Go standard library.
+
+## Open-source status
+
+The source is MIT licensed and contains a credential-free demo mode. It is suitable for self-hosted evaluation and trusted-network use, but version `0.1.x` should be treated as beta: deployments must supply their own authentication boundary, Shinobi instance, archive storage, and optional RTSP-to-HLS bridge. Contributions are welcome through focused issues and pull requests with the checks above attached.
 
 ## Live integration note
 

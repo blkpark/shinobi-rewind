@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { rewindAPI } from "../lib/api";
 import { cameraLabel } from "../lib/camera.js";
+import { localizeMessage, useLanguage } from "../lib/i18n";
 import { pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, toggleAudible } from "../lib/interaction.js";
 import type { LiveCamera, LiveCapability } from "../lib/types";
 
@@ -14,9 +15,13 @@ type SavedLayout = { version: 1; layout: Layout; primary: string; order: string[
 
 const storageKey = "shinobi-rewind:live-layout:v1";
 const emptyCapability: LiveCapability = { available: false, transport: null, lowQuality: false, message: "실시간 스트림 확인 중" };
-const stateLabel: Record<LiveState, string> = {
+const stateLabelKO: Record<LiveState, string> = {
   connecting: "연결 중", live: "LIVE", degraded: "저대역폭/지연", reconnecting: "재연결 중",
   offline: "오프라인", stale: "화면 정지", unsupported: "재생 형식 미지원", forbidden: "스트림 권한 없음", unavailable: "스트림 미구성",
+};
+const stateLabelEN: Record<LiveState, string> = {
+  connecting: "Connecting", live: "LIVE", degraded: "Low bandwidth / delayed", reconnecting: "Reconnecting",
+  offline: "Offline", stale: "Frozen", unsupported: "Unsupported format", forbidden: "Stream access denied", unavailable: "Stream unavailable",
 };
 const browserStorage = () => { try { return window.localStorage; } catch { return null; } };
 
@@ -28,6 +33,7 @@ function loadLayout(): SavedLayout | null {
 }
 
 export function LiveView({ selected, onRecorded, onNotice }: { selected: string[]; onRecorded: (camera: string, at: string) => void; onNotice: (message: string) => void }) {
+  const { language, text } = useLanguage();
   const saved = useMemo(loadLayout, []);
   const [capability, setCapability] = useState(emptyCapability);
   const [cameras, setCameras] = useState<LiveCamera[]>([]);
@@ -71,7 +77,7 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
   useEffect(() => {
     if (!primary) return;
     const nextOrder = [primary, ...scoped.filter((camera) => camera.id !== primary).map((camera) => camera.id)];
-    if (!safeStorageSet(browserStorage(), storageKey, JSON.stringify({ version: 1, layout, primary, order: nextOrder } satisfies SavedLayout))) onNotice("실시간 레이아웃을 저장할 수 없습니다.");
+    if (!safeStorageSet(browserStorage(), storageKey, JSON.stringify({ version: 1, layout, primary, order: nextOrder } satisfies SavedLayout))) onNotice(text("실시간 레이아웃을 저장할 수 없습니다.", "Could not save the live layout."));
   }, [layout, onNotice, primary, scoped]);
 
   const ordered = useMemo(() => {
@@ -95,27 +101,27 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
     void Promise.allSettled(starts).then((results) => {
       if (results.some((result) => result.status === "rejected")) {
         setRetryAll((value) => value + 1);
-        onNotice("일부 카메라를 다시 연결합니다.");
+        onNotice(text("일부 카메라를 다시 연결합니다.", "Reconnecting some cameras."));
       }
     });
   };
 
-  return <section className="live-view" aria-label="실시간 관제">
+  return <section className="live-view" aria-label={text("실시간 관제", "Live monitoring")}>
     <div className="live-toolbar">
-      <span className="live-summary">{visible.length}대 중 {liveCount}대 LIVE{capability.message ? ` · ${capability.message}` : ""}</span>
-      <div className="layout-presets" aria-label="실시간 레이아웃">
-        {([['grid', '3×2'], ['primary', '주+5'], ['quad', '2×2'], ['single', '1대']] as const).map(([value, label]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => setLayout(value)} key={value}>{label}</button>)}
+      <span className="live-summary">{language === "ko" ? `${visible.length}대 중 ${liveCount}대 LIVE` : `${liveCount} of ${visible.length} LIVE`}{capability.message ? ` · ${localizeMessage(capability.message, language)}` : ""}</span>
+      <div className="layout-presets" aria-label={text("실시간 레이아웃", "Live layout")}>
+        {([['grid', '3×2', '3×2'], ['primary', '주+5', 'Primary + 5'], ['quad', '2×2', '2×2'], ['single', '1대', 'Single']] as const).map(([value, ko, en]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => setLayout(value)} key={value}>{text(ko, en)}</button>)}
       </div>
-      <div className="layout-presets" aria-label="실시간 화질">
-        {([['low', '저화질'], ['high', '고화질']] as const).map(([value, label]) => <button type="button" className={quality === value ? "active" : ""} aria-pressed={quality === value} onClick={() => setQuality(value)} key={value}>{label}</button>)}
+      <div className="layout-presets" aria-label={text("실시간 화질", "Live quality")}>
+        {([['low', '저화질', 'Low'], ['high', '고화질', 'High']] as const).map(([value, ko, en]) => <button type="button" className={quality === value ? "active" : ""} aria-pressed={quality === value} onClick={() => setQuality(value)} key={value}>{text(ko, en)}</button>)}
       </div>
-      {!capability.lowQuality && capability.available && <small>저대역폭 스트림 미구성 · 고화질 fallback</small>}
-      {capability.available && <button type="button" className="ghost" onClick={playAll}>전체 재생</button>}
-      {failed && <button type="button" className="ghost" onClick={refresh}>목록 다시 확인</button>}
+      {!capability.lowQuality && capability.available && <small>{text("저대역폭 스트림 미구성 · 고화질 fallback", "Low-bandwidth stream unavailable · using high quality")}</small>}
+      {capability.available && <button type="button" className="ghost" onClick={playAll}>{text("전체 재생", "Play all")}</button>}
+      {failed && <button type="button" className="ghost" onClick={refresh}>{text("목록 다시 확인", "Reload list")}</button>}
     </div>
-    <div ref={gridRef} className={`live-grid live-${layout}`} aria-label="실시간 카메라 그리드">
+    <div ref={gridRef} className={`live-grid live-${layout}`} aria-label={text("실시간 카메라 그리드", "Live camera grid")}>
       {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} quality={capability.lowQuality ? quality : "high"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
-      {!visible.length && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" /><b>{failed ? "실시간 카메라 목록 확인 불가" : "표시할 카메라가 없습니다."}</b><small>{capability.message}</small></div>}
+      {!visible.length && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" /><b>{failed ? text("실시간 카메라 목록 확인 불가", "Live camera list unavailable") : text("표시할 카메라가 없습니다.", "No cameras to display.")}</b><small>{localizeMessage(capability.message, language)}</small></div>}
     </div>
   </section>;
 }
@@ -125,6 +131,7 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
   onAudible: () => void; onPrimary: () => void; onRecorded: (camera: string, at: string) => void;
   onState: (state: LiveState) => void; onNotice: (message: string) => void; onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }) {
+  const { language, text } = useLanguage();
   const [state, setState] = useState<LiveState>(enabled ? "connecting" : disabledState);
   const [retry, setRetry] = useState(0);
   const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
@@ -228,26 +235,27 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
   const fullscreen = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     const element = event.currentTarget.closest("article");
-    if (element) await reportDisplayRequest(() => element.requestFullscreen(), `${label.title} 전체화면으로 전환했습니다.`, "전체화면 전환이 차단되었습니다.", onNotice);
+    if (element) await reportDisplayRequest(() => element.requestFullscreen(), language === "ko" ? `${label.title} 전체화면으로 전환했습니다.` : `${label.title} entered fullscreen.`, text("전체화면 전환이 차단되었습니다.", "Fullscreen was blocked."), onNotice);
   };
   const pictureInPicture = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     const video = videoRef.current;
     const mode = pipMode(Boolean(video && state === "live"), Boolean(document.pictureInPictureEnabled && typeof video?.requestPictureInPicture === "function"));
-    if (!video || mode === "unavailable") { onNotice("재생 중인 실시간 영상이 없어 PiP를 열 수 없습니다."); return; }
-    if (mode === "fullscreen") { const element = event.currentTarget.closest("article"); if (element) await reportDisplayRequest(() => element.requestFullscreen(), "PiP 미지원 · 전체화면으로 전환했습니다.", "PiP와 전체화면 전환이 차단되었습니다.", onNotice); return; }
-    await reportDisplayRequest(async () => { if (document.pictureInPictureElement && document.pictureInPictureElement !== video) await document.exitPictureInPicture(); await video.requestPictureInPicture(); }, `${label.title}을 브라우저 밖 PiP로 열었습니다.`, "PiP 요청이 차단되었습니다.", onNotice);
+    if (!video || mode === "unavailable") { onNotice(text("재생 중인 실시간 영상이 없어 PiP를 열 수 없습니다.", "PiP requires a playing live stream.")); return; }
+    if (mode === "fullscreen") { const element = event.currentTarget.closest("article"); if (element) await reportDisplayRequest(() => element.requestFullscreen(), text("PiP 미지원 · 전체화면으로 전환했습니다.", "PiP unavailable · entered fullscreen."), text("PiP와 전체화면 전환이 차단되었습니다.", "PiP and fullscreen were blocked."), onNotice); return; }
+    await reportDisplayRequest(async () => { if (document.pictureInPictureElement && document.pictureInPictureElement !== video) await document.exitPictureInPicture(); await video.requestPictureInPicture(); }, language === "ko" ? `${label.title}을 브라우저 밖 PiP로 열었습니다.` : `${label.title} opened in Picture-in-Picture.`, text("PiP 요청이 차단되었습니다.", "Picture-in-Picture was blocked."), onNotice);
   };
   const retryStream = (event: React.MouseEvent) => { event.stopPropagation(); setRetry((value) => value + 1); };
   const dimmed = state === "stale" || state === "reconnecting" || state === "offline";
 
-  return <article className={`live-card ${primary ? "live-primary" : ""} ${dimmed ? "dimmed" : ""}`} data-live-card={camera.id} tabIndex={0} aria-label={`${label.title} ${stateLabel[state]}${primary ? " 주 화면" : ""}`} onClick={() => { if (!primary) onPrimary(); }} onKeyDown={(event) => { onKeyDown(event); if (event.target === event.currentTarget && !primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(); } }}>
+  const stateLabel = language === "ko" ? stateLabelKO : stateLabelEN;
+  return <article className={`live-card ${primary ? "live-primary" : ""} ${dimmed ? "dimmed" : ""}`} data-live-card={camera.id} tabIndex={0} aria-label={`${label.title} ${stateLabel[state]}${primary ? text(" 주 화면", " primary") : ""}`} onClick={() => { if (!primary) onPrimary(); }} onKeyDown={(event) => { onKeyDown(event); if (event.target === event.currentTarget && !primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(); } }}>
     <header><span className={`live-dot state-${state}`} aria-hidden="true" /><b>{label.title}</b>{label.subtitle && <small>{label.subtitle}</small>}<span className={`live-state state-${state}`}>{stateLabel[state]}</span><span className="camera-actions">
-      <button className={`camera-action ${audible ? "audible" : ""}`} type="button" disabled={camera.hasAudio !== true} aria-pressed={audible} aria-label={camera.hasAudio === true ? `${label.title} 소리 ${audible ? "끄기" : "듣기"}` : camera.hasAudio === false ? `${label.title} 음성 없음` : `${label.title} 음성 정보 확인 불가`} title={camera.hasAudio === true ? "이 카메라 소리 듣기" : camera.hasAudio === false ? "음성 없음" : "음성 정보 확인 불가"} onClick={(event) => { event.stopPropagation(); onAudible(); }}>{camera.hasAudio === true ? <SpeakerHigh aria-hidden="true" /> : <SpeakerSlash aria-hidden="true" />}</button>
+      <button className={`camera-action ${audible ? "audible" : ""}`} type="button" disabled={camera.hasAudio !== true} aria-pressed={audible} aria-label={camera.hasAudio === true ? `${label.title} ${audible ? text("소리 끄기", "mute") : text("소리 듣기", "listen")}` : camera.hasAudio === false ? `${label.title} ${text("음성 없음", "no audio")}` : `${label.title} ${text("음성 정보 확인 불가", "audio status unknown")}`} title={camera.hasAudio === true ? text("이 카메라 소리 듣기", "Listen to this camera") : camera.hasAudio === false ? text("음성 없음", "No audio") : text("음성 정보 확인 불가", "Audio status unknown")} onClick={(event) => { event.stopPropagation(); onAudible(); }}>{camera.hasAudio === true ? <SpeakerHigh aria-hidden="true" /> : <SpeakerSlash aria-hidden="true" />}</button>
       <button className="camera-action" type="button" onClick={pictureInPicture} aria-label={`${label.title} PiP`} aria-pressed={pipActive}><PictureInPicture aria-hidden="true" /></button>
-      <button className="camera-action" type="button" onClick={fullscreen} aria-label={`${label.title} 전체화면`} aria-pressed={fullscreenActive}><ArrowsOut aria-hidden="true" /></button>
+      <button className="camera-action" type="button" onClick={fullscreen} aria-label={`${label.title} ${text("전체화면", "fullscreen")}`} aria-pressed={fullscreenActive}><ArrowsOut aria-hidden="true" /></button>
     </span></header>
-    <div className="live-frame"><video ref={videoRef} muted={!audible} autoPlay playsInline />{state !== "live" && <div className="live-overlay" role="status"><VideoCameraSlash size={primary ? 34 : 24} aria-hidden="true" /><b>{stateLabel[state]}</b>{lastFrameAt && dimmed && <small>마지막 화면 {new Date(lastFrameAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false })}</small>}{["offline", "stale", "reconnecting"].includes(state) && <button type="button" onClick={retryStream}>다시 연결</button>}</div>}</div>
-    <footer><span>{streamQuality === "low" ? "저화질" : "고화질"}</span><button type="button" disabled={!camera.latestRecordedAt} title={camera.latestRecordedAt ? "서버가 확인한 최근 녹화로 이동" : "최근 녹화 시각 확인 불가"} onClick={(event) => { event.stopPropagation(); if (camera.latestRecordedAt) onRecorded(camera.id, camera.latestRecordedAt); }}>최근 녹화</button></footer>
+    <div className="live-frame"><video ref={videoRef} muted={!audible} autoPlay playsInline />{state !== "live" && <div className="live-overlay" role="status"><VideoCameraSlash size={primary ? 34 : 24} aria-hidden="true" /><b>{stateLabel[state]}</b>{lastFrameAt && dimmed && <small>{text("마지막 화면", "Last frame")} {new Date(lastFrameAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false })}</small>}{["offline", "stale", "reconnecting"].includes(state) && <button type="button" onClick={retryStream}>{text("다시 연결", "Reconnect")}</button>}</div>}</div>
+    <footer><span>{streamQuality === "low" ? text("저화질", "Low quality") : text("고화질", "High quality")}</span><button type="button" disabled={!camera.latestRecordedAt} title={camera.latestRecordedAt ? text("서버가 확인한 최근 녹화로 이동", "Open the latest server-confirmed recording") : text("최근 녹화 시각 확인 불가", "Latest recording time unavailable")} onClick={(event) => { event.stopPropagation(); if (camera.latestRecordedAt) onRecorded(camera.id, camera.latestRecordedAt); }}>{text("최근 녹화", "Latest recording")}</button></footer>
   </article>;
 }

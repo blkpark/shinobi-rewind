@@ -21,6 +21,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .topbar nav button.active, .primary, .play, .rates .active { background: #1766ce; color: #fff; }
 .clock { color: #b1c0ca; font-size: 12px; white-space: nowrap; }
 .clock strong { color: #eff8ff; font-size: 16px; }
+.language-switch { display: flex; overflow: hidden; border: 1px solid #27465a; border-radius: 5px; }
+.language-switch button { padding: 6px 8px; border: 0; border-left: 1px solid #27465a; background: #0a1a26; font-size: 11px; }
+.language-switch button:first-child { border-left: 0; }
+.language-switch button.active { background: #1766ce; color: #fff; }
 .ghost, .controls select, .transport button, .icon-button { border: 1px solid #27465a; border-radius: 5px; background: #0a1a26; }
 .ghost, .icon-button { padding: 8px 12px; }
 .icon-button { display: grid; place-items: center; padding: 8px; }
