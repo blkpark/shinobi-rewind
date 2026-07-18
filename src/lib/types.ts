@@ -1,8 +1,15 @@
 export type Camera = { id: string; name: string; detector: boolean };
 export type SegmentState = "recorded" | "gap" | "corrupt";
 export type Segment = { id: string; cameraId: string; start: string; end: string; state: SegmentState; hasAudio: boolean | null };
+export type RecordingHour = { hour: number; recorded: number; gap: number; corrupt: number };
+export type RecordingDay = { date: string; hours: RecordingHour[] };
+export type RecordingSummary = { days: RecordingDay[]; cameraCount: number; failedCameras: string[] };
 export type Event = { id: string; cameraId: string; at: string; end?: string };
 export type Capability = { demo: boolean; motion: "available" | "detector_off" | "unavailable"; message: string };
 export type LiveCapability = { available: boolean; transport: "hls" | null; lowQuality: boolean; message: string };
 export type LiveCamera = Camera & { hasAudio: boolean | null; latestRecordedAt: string | null };
+export type ArchiveArtifactStatus = "queued" | "waiting_recording" | "copying" | "verifying" | "verified" | "failed";
+export type ArchiveStatus = ArchiveArtifactStatus | "partial";
+export type ArchiveArtifact = { id: string; cameraId: string; start?: string; end?: string; status: ArchiveArtifactStatus; size?: number; sha256?: string; reason?: string; videoUrl?: string };
+export type Archive = { id: string; at: string; label?: string; cameraIds: string[]; status: ArchiveStatus; createdAt: string; updatedAt: string; artifacts: ArchiveArtifact[] };
 export type View = "live" | "search" | "control";

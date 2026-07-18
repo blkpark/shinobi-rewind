@@ -1,6 +1,6 @@
 # Shinobi Rewind
 
-Read-only companion for finding Shinobi recordings by exact time and reviewing up to six cameras on one shared timeline.
+Companion for finding Shinobi recordings by exact time, reviewing up to six cameras on one shared timeline, and preserving explicitly favorited segments on a separate archive drive.
 
 ## Run
 
@@ -10,9 +10,11 @@ For a live, read-only installation copy `.env.example` to `.env`, set `DEMO_MODE
 
 The included Compose example joins an existing `cctv` Docker network and binds to `127.0.0.1:8092` by default. Override `SHINOBI_REWIND_BIND_IP` and `SHINOBI_REWIND_PORT` in the deployment environment; keep site-specific addresses out of the public repository.
 
+Set `ARCHIVE_ROOT` to a dedicated writable directory to enable favorite preservation. The service streams the completed original segment from Shinobi into a `.part` file, verifies its byte count and SHA-256 digest, and atomically publishes only the verified copy. The archive is intentionally independent of browser favorite removal and exposes no permanent-delete API while the LAN service has no authentication boundary.
+
 ## API
 
-`GET /api/v1/capabilities`, `/cameras`, `/timeline?date=YYYY-MM-DD&camera=...`, `/events?from=RFC3339&to=RFC3339&camera=...`, and `GET|HEAD /api/v1/videos/{opaqueId}`. Video proxying forwards HTTP ranges without buffering; gap, corrupt, malformed, and unplayable segments return a safe error.
+`GET /api/v1/capabilities`, `/cameras`, `/timeline?date=YYYY-MM-DD&camera=...`, `/events?from=RFC3339&to=RFC3339&camera=...`, and `GET|HEAD /api/v1/videos/{opaqueId}`. Video proxying forwards HTTP ranges without buffering; gap, corrupt, malformed, and unplayable segments return a safe error. The archive API accepts idempotent favorite preservation requests, lists them by KST date or month, and serves HTTP Range previews only for verified artifacts.
 
 Timeline segments expose `hasAudio` as `true`, `false`, or `null`. Only explicit Shinobi video metadata becomes true/false; missing or ambiguous metadata stays null rather than being guessed. The browser keeps at most one audible camera and mutes audio above 4x.
 

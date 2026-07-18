@@ -18,6 +18,7 @@ type Config struct {
 	ShinobiLowChannel string
 	LiveHLSURL        *url.URL
 	HeaderTimeout     time.Duration
+	ArchiveRoot       string
 }
 
 func LoadConfig() (Config, error) {
@@ -29,7 +30,7 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{ListenAddr: value("LISTEN_ADDR", ":8080"), Demo: demo, ShinobiGroup: os.Getenv("SHINOBI_GROUP_KEY"), ShinobiKey: os.Getenv("SHINOBI_API_KEY"), ShinobiLowChannel: lowChannel, HeaderTimeout: 15 * time.Second}
+	c := Config{ListenAddr: value("LISTEN_ADDR", ":8080"), Demo: demo, ShinobiGroup: os.Getenv("SHINOBI_GROUP_KEY"), ShinobiKey: os.Getenv("SHINOBI_API_KEY"), ShinobiLowChannel: lowChannel, HeaderTimeout: 15 * time.Second, ArchiveRoot: strings.TrimSpace(os.Getenv("ARCHIVE_ROOT"))}
 	if c.Demo {
 		return c, nil
 	}

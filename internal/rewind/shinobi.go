@@ -176,31 +176,37 @@ func (s *ShinobiSource) Timeline(ctx context.Context, day time.Time, camera stri
 		s.indexTimeline(entry)
 		return entry.data, nil
 	}
-	end := day.AddDate(0, 0, 1)
-	query := url.Values{"start": {shinobiBound(day)}, "end": {shinobiBound(end)}, "endIsStartTo": {"1"}}
-	res, err := s.request(ctx, "videos", camera, query)
+	segments, err := s.Recordings(ctx, day, day.AddDate(0, 0, 1), camera)
 	if err != nil {
 		return Timeline{}, err
 	}
+	timeline := Timeline{CameraID: camera, Segments: segments}
+	s.storeTimeline(key, timeline)
+	return timeline, nil
+}
+
+func (s *ShinobiSource) Recordings(ctx context.Context, from, to time.Time, camera string) ([]Segment, error) {
+	query := url.Values{"start": {shinobiBound(from)}, "end": {shinobiBound(to)}, "endIsStartTo": {"1"}}
+	res, err := s.request(ctx, "videos", camera, query)
+	if err != nil {
+		return nil, err
+	}
 	defer res.Body.Close()
 	if res.StatusCode/100 != 2 {
-		return Timeline{}, fmt.Errorf("shinobi video request failed: %d", res.StatusCode)
+		return nil, fmt.Errorf("shinobi video request failed: %d", res.StatusCode)
 	}
 	var envelope struct {
 		Videos []shinobiVideo `json:"videos"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
-		return Timeline{}, err
+		return nil, err
 	}
-	timeline := Timeline{CameraID: camera, Segments: s.normalizedSegments(camera, day, envelope.Videos)}
-	s.storeTimeline(key, timeline)
-	return timeline, nil
+	return s.normalizedSegments(camera, from, to, envelope.Videos), nil
 }
 
 func shinobiBound(at time.Time) string { return at.In(seoul).Format("2006-01-02T15:04:05") }
 
-func (s *ShinobiSource) normalizedSegments(camera string, day time.Time, videos []shinobiVideo) []Segment {
-	endOfDay := day.AddDate(0, 0, 1)
+func (s *ShinobiSource) normalizedSegments(camera string, from, to time.Time, videos []shinobiVideo) []Segment {
 	items := make([]Segment, 0, len(videos))
 	seen := map[string]bool{}
 	for index, video := range videos {
@@ -213,16 +219,19 @@ func (s *ShinobiSource) normalizedSegments(camera string, day time.Time, videos 
 		seen[id] = true
 		state := "recorded"
 		if !validStart {
-			start, end, state = endOfDay.Add(-time.Duration(len(videos)-index)*time.Nanosecond), endOfDay.Add(-time.Duration(len(videos)-index-1)*time.Nanosecond), "corrupt"
+			if to.Sub(from) > 24*time.Hour {
+				continue // an unknown timestamp must not be painted onto an arbitrary calendar day
+			}
+			start, end, state = to.Add(-time.Duration(len(videos)-index)*time.Nanosecond), to.Add(-time.Duration(len(videos)-index-1)*time.Nanosecond), "corrupt"
 		}
 		if !validEnd || end.Sub(start) < minimumLength || video.Filename == "" {
 			state = "corrupt"
 		}
-		if start.Before(day) || !start.Before(endOfDay) {
+		if start.Before(from) || !start.Before(to) {
 			continue
 		}
-		if end.After(endOfDay) {
-			end = endOfDay
+		if end.After(to) {
+			end = to
 		}
 		items = append(items, Segment{ID: id, CameraID: camera, Start: start, End: end, State: state, HasAudio: explicitAudio(video.Details), Source: s.endpoint("videos", camera, nil) + "/" + url.PathEscape(video.Filename)})
 	}

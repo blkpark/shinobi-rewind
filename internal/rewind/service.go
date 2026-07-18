@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,13 +21,15 @@ import (
 var web embed.FS
 
 type Service struct {
-	config  Config
-	source  Source
-	client  *http.Client
-	mu      sync.RWMutex
-	allowed map[string]struct{}
-	liveMu  sync.Mutex
-	live    map[string]liveAsset
+	config     Config
+	source     Source
+	client     *http.Client
+	mu         sync.RWMutex
+	allowed    map[string]struct{}
+	liveMu     sync.Mutex
+	live       map[string]liveAsset
+	archive    *archiveStore
+	archiveErr error
 }
 
 func NewService(c Config, source Source) *Service {
@@ -40,11 +43,15 @@ func NewService(c Config, source Source) *Service {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = upstreamTimeout(c)
 	transport.DialContext = (&net.Dialer{Timeout: upstreamTimeout(c)}).DialContext
-	return &Service{
+	service := &Service{
 		config: c, source: source, allowed: map[string]struct{}{},
 		live:   map[string]liveAsset{},
 		client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
+	if c.ArchiveRoot != "" {
+		service.archive, service.archiveErr = newArchiveStore(c.ArchiveRoot, service)
+	}
+	return service
 }
 
 func (s *Service) Handler() http.Handler {
@@ -56,6 +63,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/capabilities", s.capabilities)
 	mux.HandleFunc("GET /api/v1/cameras", s.cameras)
 	mux.HandleFunc("GET /api/v1/timeline", s.timeline)
+	mux.HandleFunc("GET /api/v1/recording-summary", s.recordingSummary)
 	mux.HandleFunc("GET /api/v1/events", s.events)
 	mux.HandleFunc("GET /api/v1/videos/{id}", s.video)
 	mux.HandleFunc("HEAD /api/v1/videos/{id}", s.video)
@@ -64,6 +72,19 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/live/{camera}/playlist.m3u8", s.livePlaylist)
 	mux.HandleFunc("GET /api/v1/live/{camera}/segments/{id}", s.liveSegment)
 	mux.HandleFunc("HEAD /api/v1/live/{camera}/segments/{id}", s.liveSegment)
+	mux.HandleFunc("POST /api/v1/archives", s.createArchive)
+	mux.HandleFunc("GET /api/v1/archives", s.listArchives)
+	mux.HandleFunc("GET /api/v1/archives/{id}", s.getArchive)
+	mux.HandleFunc("GET /api/v1/archives/{id}/videos/{artifact}", s.archiveVideo)
+	mux.HandleFunc("HEAD /api/v1/archives/{id}/videos/{artifact}", s.archiveVideo)
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/archives") {
+			w.Header().Set("Allow", "GET, HEAD, POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		http.NotFound(w, r)
+	})
 	assets, _ := fs.Sub(web, "web/dist")
 	mux.Handle("/", spa(assets))
 	return logging(mux)
@@ -168,6 +189,86 @@ func (s *Service) timeline(w http.ResponseWriter, r *http.Request) {
 
 func parseKSTDate(raw string) (time.Time, error) {
 	return time.ParseInLocation("2006-01-02", raw, seoul)
+}
+
+func (s *Service) recordingSummary(w http.ResponseWriter, r *http.Request) {
+	from, fromErr := parseKSTDate(r.URL.Query().Get("from"))
+	last, toErr := parseKSTDate(r.URL.Query().Get("to"))
+	to := last.AddDate(0, 0, 1)
+	cameras := strings.Split(r.URL.Query().Get("cameras"), ",")
+	if fromErr != nil || toErr != nil || !to.After(from) || to.Sub(from) > 31*24*time.Hour || len(cameras) == 0 || len(cameras) > 6 {
+		http.Error(w, "from/to must cover 1-31 KST days and 1-6 cameras are required", http.StatusBadRequest)
+		return
+	}
+	seen := map[string]bool{}
+	for _, camera := range cameras {
+		if seen[camera] || !s.allowedCamera(r.Context(), camera) {
+			http.Error(w, "known unique cameras are required", http.StatusBadRequest)
+			return
+		}
+		seen[camera] = true
+	}
+	type result struct {
+		camera   string
+		segments []Segment
+		err      error
+	}
+	results := make(chan result, len(cameras))
+	for _, camera := range cameras {
+		go func(camera string) {
+			segments, err := s.source.Recordings(r.Context(), from, to, camera)
+			results <- result{camera: camera, segments: segments, err: err}
+		}(camera)
+	}
+	type states struct{ recorded, gap, corrupt map[string]struct{} }
+	hours := map[string]*states{}
+	failed := []string{}
+	for range cameras {
+		result := <-results
+		if result.err != nil {
+			failed = append(failed, result.camera)
+			continue
+		}
+		for _, segment := range result.segments {
+			cursor := segment.Start.In(seoul)
+			cursor = time.Date(cursor.Year(), cursor.Month(), cursor.Day(), cursor.Hour(), 0, 0, 0, seoul)
+			for cursor.Before(segment.End) && cursor.Before(to) {
+				if segment.End.After(cursor) && segment.Start.Before(cursor.Add(time.Hour)) {
+					key := cursor.Format("2006-01-02T15")
+					state := hours[key]
+					if state == nil {
+						state = &states{recorded: map[string]struct{}{}, gap: map[string]struct{}{}, corrupt: map[string]struct{}{}}
+						hours[key] = state
+					}
+					switch segment.State {
+					case "recorded":
+						state.recorded[result.camera] = struct{}{}
+					case "gap":
+						state.gap[result.camera] = struct{}{}
+					case "corrupt":
+						state.corrupt[result.camera] = struct{}{}
+					}
+				}
+				cursor = cursor.Add(time.Hour)
+			}
+		}
+	}
+	sort.Strings(failed)
+	days := make([]RecordingDay, 0, int(to.Sub(from)/(24*time.Hour)))
+	for day := from; day.Before(to); day = day.AddDate(0, 0, 1) {
+		summary := RecordingDay{Date: day.Format("2006-01-02"), Hours: make([]RecordingHour, 24)}
+		for hour := 0; hour < 24; hour++ {
+			state := hours[fmt.Sprintf("%sT%02d", summary.Date, hour)]
+			summary.Hours[hour].Hour = hour
+			if state != nil {
+				summary.Hours[hour].Recorded = len(state.recorded)
+				summary.Hours[hour].Gap = len(state.gap)
+				summary.Hours[hour].Corrupt = len(state.corrupt)
+			}
+		}
+		days = append(days, summary)
+	}
+	writeJSON(w, http.StatusOK, RecordingSummary{Days: days, CameraCount: len(cameras), FailedCameras: failed})
 }
 
 func (s *Service) events(w http.ResponseWriter, r *http.Request) {
