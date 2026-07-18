@@ -7,7 +7,7 @@ import { SearchView } from "./components/SearchView";
 import { LiveView } from "./components/LiveView";
 import { rewindAPI } from "./lib/api";
 import { cameraTitle, resolveCameraSelection } from "./lib/camera.js";
-import { clampRate, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
+import { clampRate, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
 import { applyFocus, canCorrectMedia, driftCorrection, expireFocus, monotonicMaster, segmentAt, simultaneousFocus, videoOffset, type FocusState } from "./lib/playback.js";
 import type { Camera, Capability, Event, Segment, View } from "./lib/types";
 
@@ -132,7 +132,7 @@ export function App() {
 	}, [cameras, selected, view]);
 
   useEffect(() => {
-    setMaster((current) => kstSecond(date, formatTime(current)));
+    setMaster((current) => rebaseKSTDate(current, date));
   }, [date]);
 
   const urlSecond = Math.floor(master);
@@ -189,6 +189,14 @@ export function App() {
 	}, [effectivePlaying, rate]);
 
 	useEffect(() => { masterRef.current = master; }, [master]);
+
+  useEffect(() => {
+    if (view !== "control") return;
+    const currentDate = kstDateAt(master);
+    if (currentDate === date) return;
+    setPrimarySyncing(true);
+    setDate(currentDate);
+  }, [date, master, view]);
 
   useEffect(() => {
     const liveFocus = simultaneousFocus(events, master, orderedIds, focusMasterRef.current);
@@ -277,7 +285,6 @@ export function App() {
     setDate(kstDateAt(target)); seekTo(target); setView("control");
   };
   const setAudio = (cameraId: string, hasAudio: boolean | null) => setAudibleCamera((current) => toggleAudible(current, cameraId, hasAudio));
-  const kstDateAt = (seconds: number) => new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
   const openRecorded = (cameraId: string, at: string) => {
     const target = Date.parse(at) / 1000;
     if (!Number.isFinite(target)) { setNotice("최근 녹화 시각을 확인할 수 없습니다."); return; }

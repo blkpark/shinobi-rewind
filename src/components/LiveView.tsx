@@ -8,6 +8,7 @@ import { pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, toggleAu
 import type { LiveCamera, LiveCapability } from "../lib/types";
 
 type Layout = "grid" | "primary" | "quad" | "single";
+type Quality = "low" | "high";
 type LiveState = "connecting" | "live" | "degraded" | "reconnecting" | "offline" | "stale" | "unsupported" | "forbidden" | "unavailable";
 type SavedLayout = { version: 1; layout: Layout; primary: string; order: string[] };
 
@@ -36,6 +37,8 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
   const [order, setOrder] = useState<string[]>(saved?.order || []);
   const [audible, setAudible] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, LiveState>>({});
+  const [retryAll, setRetryAll] = useState(0);
+  const [quality, setQuality] = useState<Quality>("low");
   const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== "hidden");
   const gridRef = useRef<HTMLDivElement | null>(null);
 
@@ -85,6 +88,17 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
     const next = event.key === "Home" ? 0 : event.key === "End" ? visible.length - 1 : Math.max(0, Math.min(visible.length - 1, index + delta));
     if (delta || event.key === "Home" || event.key === "End") { event.preventDefault(); gridRef.current?.querySelectorAll<HTMLElement>("[data-live-card]")[next]?.focus(); }
   };
+  const playAll = () => {
+    const videos = [...(gridRef.current?.querySelectorAll("video") || [])];
+    if (!videos.length) return;
+    const starts = videos.map((video) => video.play());
+    void Promise.allSettled(starts).then((results) => {
+      if (results.some((result) => result.status === "rejected")) {
+        setRetryAll((value) => value + 1);
+        onNotice("일부 카메라를 다시 연결합니다.");
+      }
+    });
+  };
 
   return <section className="live-view" aria-label="실시간 관제">
     <div className="live-toolbar">
@@ -92,18 +106,22 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
       <div className="layout-presets" aria-label="실시간 레이아웃">
         {([['grid', '3×2'], ['primary', '주+5'], ['quad', '2×2'], ['single', '1대']] as const).map(([value, label]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => setLayout(value)} key={value}>{label}</button>)}
       </div>
+      <div className="layout-presets" aria-label="실시간 화질">
+        {([['low', '저화질'], ['high', '고화질']] as const).map(([value, label]) => <button type="button" className={quality === value ? "active" : ""} aria-pressed={quality === value} onClick={() => setQuality(value)} key={value}>{label}</button>)}
+      </div>
       {!capability.lowQuality && capability.available && <small>저대역폭 스트림 미구성 · 고화질 fallback</small>}
+      {capability.available && <button type="button" className="ghost" onClick={playAll}>전체 재생</button>}
       {failed && <button type="button" className="ghost" onClick={refresh}>목록 다시 확인</button>}
     </div>
     <div ref={gridRef} className={`live-grid live-${layout}`} aria-label="실시간 카메라 그리드">
-      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} quality={camera.id === primary || !capability.lowQuality ? "high" : "low"} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
+      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} quality={capability.lowQuality ? quality : "high"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
       {!visible.length && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" /><b>{failed ? "실시간 카메라 목록 확인 불가" : "표시할 카메라가 없습니다."}</b><small>{capability.message}</small></div>}
     </div>
   </section>;
 }
 
-function LiveTile({ camera, primary, quality, enabled, disabledState, audible, onAudible, onPrimary, onRecorded, onState, onNotice, onKeyDown }: {
-  camera: LiveCamera; primary: boolean; quality: "low" | "high"; enabled: boolean; disabledState: "connecting" | "unavailable"; audible: boolean;
+function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, audible, onAudible, onPrimary, onRecorded, onState, onNotice, onKeyDown }: {
+  camera: LiveCamera; primary: boolean; quality: Quality; retryAll: number; enabled: boolean; disabledState: "connecting" | "unavailable"; audible: boolean;
   onAudible: () => void; onPrimary: () => void; onRecorded: (camera: string, at: string) => void;
   onState: (state: LiveState) => void; onNotice: (message: string) => void; onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }) {
@@ -118,6 +136,7 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
   const lastCurrentTimeRef = useRef(-1);
   const releaseTimerRef = useRef<number | null>(null);
   const label = cameraLabel(camera);
+  const streamQuality: Quality = fullscreenActive ? "high" : quality;
 
   const updateState = (next: LiveState) => { stateRef.current = next; setState(next); onState(next); };
 
@@ -130,7 +149,7 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
     let cancelled = false;
     let retries = 0;
     const timers: number[] = [];
-    const source = rewindAPI.livePlaylist(camera.id, quality);
+    const source = rewindAPI.livePlaylist(camera.id, streamQuality);
     lastProgressRef.current = null;
     lastCurrentTimeRef.current = -1;
     const markLive = () => {
@@ -173,6 +192,7 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
     video.addEventListener("stalled", waiting);
     video.addEventListener("error", mediaError);
     const staleTimer = window.setInterval(() => {
+      markLive();
       const last = lastProgressRef.current;
       if (last) setLastFrameAt(last);
       if (last && Date.now() - last > 8000) updateState("stale");
@@ -190,7 +210,7 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
       video.pause(); video.removeAttribute("src");
       releaseTimerRef.current = window.setTimeout(() => { video.load(); releaseTimerRef.current = null; }, 0);
     };
-  }, [camera.id, disabledState, enabled, quality, retry]);
+  }, [camera.id, disabledState, enabled, retry, retryAll, streamQuality]);
 
   useEffect(() => { const video = videoRef.current; if (video) video.muted = !audible; }, [audible]);
   useEffect(() => {
@@ -228,6 +248,6 @@ function LiveTile({ camera, primary, quality, enabled, disabledState, audible, o
       <button className="camera-action" type="button" onClick={fullscreen} aria-label={`${label.title} 전체화면`} aria-pressed={fullscreenActive}><ArrowsOut aria-hidden="true" /></button>
     </span></header>
     <div className="live-frame"><video ref={videoRef} muted={!audible} autoPlay playsInline />{state !== "live" && <div className="live-overlay" role="status"><VideoCameraSlash size={primary ? 34 : 24} aria-hidden="true" /><b>{stateLabel[state]}</b>{lastFrameAt && dimmed && <small>마지막 화면 {new Date(lastFrameAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false })}</small>}{["offline", "stale", "reconnecting"].includes(state) && <button type="button" onClick={retryStream}>다시 연결</button>}</div>}</div>
-    <footer><span>{quality === "low" ? "저대역폭" : "고화질"}</span><button type="button" disabled={!camera.latestRecordedAt} title={camera.latestRecordedAt ? "서버가 확인한 최근 녹화로 이동" : "최근 녹화 시각 확인 불가"} onClick={(event) => { event.stopPropagation(); if (camera.latestRecordedAt) onRecorded(camera.id, camera.latestRecordedAt); }}>최근 녹화</button></footer>
+    <footer><span>{streamQuality === "low" ? "저화질" : "고화질"}</span><button type="button" disabled={!camera.latestRecordedAt} title={camera.latestRecordedAt ? "서버가 확인한 최근 녹화로 이동" : "최근 녹화 시각 확인 불가"} onClick={(event) => { event.stopPropagation(); if (camera.latestRecordedAt) onRecorded(camera.id, camera.latestRecordedAt); }}>최근 녹화</button></footer>
   </article>;
 }

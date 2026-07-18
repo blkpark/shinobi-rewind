@@ -340,6 +340,9 @@ func TestStrictDemoAndReadiness(t *testing.T) {
 	if enabled, err := parseDemo("false"); err != nil || enabled {
 		t.Fatalf("false = %v %v", enabled, err)
 	}
+	if _, err := parseLowChannel("invalid"); err == nil {
+		t.Fatal("accepted invalid SHINOBI_LOW_STREAM_CHANNEL")
+	}
 	s := NewService(Config{Demo: false}, testSource{ready: context.DeadlineExceeded})
 	res := httptest.NewRecorder()
 	s.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/readyz", nil))

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -157,6 +157,13 @@ test("URL time and custom rate drafts reject temporary or malformed values", () 
   assert.equal(parseRateDraft(""), null); assert.equal(parseRateDraft("oops"), null); assert.equal(parseRateDraft("1.23"), 1.25);
 });
 
+test("recorded playback follows the KST date across midnight", () => {
+  assert.equal(kstDateAt(at("23:59:59")), "2026-07-15");
+  assert.equal(kstDateAt(at("23:59:59") + 1), "2026-07-16");
+  assert.equal(rebaseKSTDate(at("23:59:59") + 1.75, "2026-07-16"), at("23:59:59") + 1.75);
+  assert.equal(rebaseKSTDate(at("23:59:59") + .75, "2026-07-16"), at("23:59:59") + 86400);
+});
+
 test("calendar month navigation clamps end-of-month dates", () => {
   assert.equal(shiftMonth("2026-01-31", 1), "2026-02-28");
   assert.equal(shiftMonth("2026-03-31", -1), "2026-02-28");
@@ -239,6 +246,12 @@ test("live view isolates camera sessions and keeps state labels honest", () => {
   assert.match(app, /view === "live" \? <LiveView/);
   assert.match(live, /visible\.filter\(\(camera\) => statuses\[camera\.id\] === "live"\)/);
   assert.match(live, /visibilitychange/);
+  assert.match(live, /retryAll/);
+  assert.match(live, /aria-label="실시간 화질"/);
+  assert.match(live, /\[\['low', '저화질'\], \['high', '고화질'\]\]/);
+  assert.match(live, /const starts = videos\.map\(\(video\) => video\.play\(\)\)/);
+  assert.match(live, /fullscreenActive \? "high" : quality/);
+  assert.match(live, /const staleTimer = window\.setInterval\(\(\) => \{\s+markLive\(\);/);
   assert.match(live, /hls\?\.destroy\(\)/);
   assert.match(live, /camera\.hasAudio === false \? `\$\{label\.title\} 음성 없음` : `\$\{label\.title\} 음성 정보 확인 불가`/);
   assert.match(live, /aria-pressed=\{pipActive\}/);

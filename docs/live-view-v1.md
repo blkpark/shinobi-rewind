@@ -1,7 +1,7 @@
 # 실시간 관제 V1 제품 명세
 
-상태: P0 로컬 구현·검증 완료, 운영 HLS proof 차단  
-작성일: 2026-07-16  
+상태: 운영 HQ/LQ HLS 연결, 30분 안정성 proof 진행 중
+작성일: 2026-07-16
 대상: Shinobi Rewind 내부 운영자
 
 ## 문제와 목표
@@ -90,9 +90,9 @@ playlist rewrite와 segment lookup은 server-side registry를 사용한다. came
 
 ### 운영 전제
 
-- 운영 확인상 6대 모두 main HLS/copy이며 substream 설정은 있지만 노출된 stream channel은 0이다. grid용 static low-bandwidth channel은 별도 Shinobi infra release로 준비한 뒤 사용한다. Rewind가 `toggleSubstream`처럼 upstream 상태를 변경하지 않는다.
+- 운영 6대는 Hikvision `101` main stream을 고화질 HLS/녹화에 사용하고, `102` substream을 Shinobi static stream channel `0`의 저대역폭 HLS로 노출한다. Rewind가 `toggleSubstream`처럼 upstream 상태를 변경하지 않는다.
 - 한 브라우저가 카메라 RTSP에 직접 연결하지 않고 Shinobi가 restream owner가 된다.
-- 현재 read-only key에는 `watch_stream` 권한이 없어 live browser proof는 차단된 상태다. live 전용 key는 `get_monitors`, `watch_videos`, `watch_stream`만 허용하고 mutation, socket auth, control, delete 권한은 모두 거부한다.
+- 운영 read-only key는 `get_monitors`, `watch_videos`, `watch_stream`만 허용하고 mutation, socket auth, control, delete 권한은 모두 거부한다.
 - 현재 monitor 설정에서 credential이 포함된 substream 입력이 관찰되었으므로 실시간 기능 출시 전에 CAM-201~206 RTSP credential을 회전하고 log redaction을 검증한다.
 
 ## P0 / P1 / P2
@@ -174,6 +174,14 @@ playlist rewrite와 segment lookup은 server-side registry를 사용한다. came
 - live frontend는 독립 clock/state, 4개 layout, primary swap, camera별 retry/stale 상태, hidden-tab cleanup, lazy `hls.js`, single audio, PiP/fullscreen state sync, completed recording handoff를 구현했다.
 - `go test ./...`, race, vet, frontend typecheck, 25 tests, build가 통과했다. demo 6대로 1280×720 3×2/주+5 no-scroll, primary swap, visible-only summary, console error 0건을 브라우저에서 확인했다.
 - 운영 `watch_stream` 권한, CAM-201~206 RTSP credential 회전, static LQ channel이 준비되지 않아 실제 HLS first-frame/30분 안정성/camera disconnect/LQ→HQ hold/session cleanup/accessibility proof는 아직 차단 상태다. 이 gate 전에는 배포 완료로 판정하지 않는다.
+
+## 2026-07-17 운영 HLS 연결
+
+- Hikvision 공식 채널 규칙과 운영 설정을 대조해 CAM-201~206의 `101` main, `102` substream을 확인했다. CAM-201 `102`는 H.264 640×360 20fps로 직접 probe했다.
+- 최소권한 API key에 `watch_stream`만 추가하고 mutation/control/delete 권한은 계속 거부했다. Shinobi 권한 cache 갱신 후 CAM-201 main HLS가 200과 재작성 segment를 반환했다.
+- 6대 모두 `102`를 additional input feed로 연결하고 static HLS channel `0`을 만들었다. 운영에서 main 6개와 low 6개 playlist 생성을 확인했다.
+- Rewind는 `SHINOBI_LOW_STREAM_CHANNEL=0`이 명시된 배포에서만 low capability를 노출한다. 설정이 없거나 잘못된 quality 요청은 422로 실패한다.
+- 남은 release gate는 실제 브라우저 6대 first-frame, primary HQ/supporting LQ 전환, 30분 안정성, 한 카메라 disconnect 격리, session cleanup, CAM-201~206 RTSP credential 회전이다.
 
 ## 조사 근거
 

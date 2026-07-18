@@ -28,11 +28,12 @@ type liveAsset struct {
 	camera   string
 	upstream *url.URL
 	root     *url.URL
+	cookie   string
 	expires  time.Time
 }
 
 func (s *Service) liveCapabilities(w http.ResponseWriter, _ *http.Request) {
-	available := !s.config.Demo && s.config.ShinobiURL != nil
+	available := !s.config.Demo && (s.config.LiveHLSURL != nil || s.config.ShinobiURL != nil)
 	var transport *string
 	message := "실시간 스트림이 구성되지 않았습니다."
 	if available {
@@ -43,7 +44,7 @@ func (s *Service) liveCapabilities(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available":  available,
 		"transport":  transport,
-		"lowQuality": false,
+		"lowQuality": available && (s.config.LiveHLSURL != nil || s.config.ShinobiLowChannel != ""),
 		"message":    message,
 	})
 }
@@ -117,11 +118,15 @@ func (s *Service) livePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	quality := r.URL.Query().Get("quality")
-	if quality != "" && quality != "high" {
+	if quality != "" && quality != "high" && quality != "low" {
 		http.Error(w, "requested live quality is unavailable", http.StatusUnprocessableEntity)
 		return
 	}
-	upstream, root, err := s.liveURLs(camera)
+	if quality == "low" && s.config.LiveHLSURL == nil && s.config.ShinobiLowChannel == "" {
+		http.Error(w, "requested live quality is unavailable", http.StatusUnprocessableEntity)
+		return
+	}
+	upstream, root, err := s.liveURLs(camera, quality)
 	if err != nil {
 		http.Error(w, "live stream is unavailable", http.StatusServiceUnavailable)
 		return
@@ -143,7 +148,20 @@ func (s *Service) liveSegment(w http.ResponseWriter, r *http.Request) {
 	s.serveLiveAsset(w, r, asset)
 }
 
-func (s *Service) liveURLs(camera string) (*url.URL, *url.URL, error) {
+func (s *Service) liveURLs(camera, quality string) (*url.URL, *url.URL, error) {
+	if s.config.LiveHLSURL != nil {
+		if !safeURLComponent(camera) {
+			return nil, nil, fmt.Errorf("invalid live path component")
+		}
+		if quality == "" {
+			quality = "high"
+		}
+		root := s.config.LiveHLSURL.JoinPath("cam" + strings.ToLower(camera) + quality)
+		root.RawQuery, root.Fragment = "", ""
+		playlist := root.JoinPath("index.m3u8")
+		playlist.RawQuery = "cookieCheck=1"
+		return playlist, root, nil
+	}
 	if s.config.ShinobiURL == nil || s.config.ShinobiKey == "" || s.config.ShinobiGroup == "" {
 		return nil, nil, fmt.Errorf("live upstream is not configured")
 	}
@@ -153,6 +171,9 @@ func (s *Service) liveURLs(camera string) (*url.URL, *url.URL, error) {
 		}
 	}
 	root := s.config.ShinobiURL.JoinPath(s.config.ShinobiKey, "hls", s.config.ShinobiGroup, camera)
+	if quality == "low" {
+		root = root.JoinPath(s.config.ShinobiLowChannel)
+	}
 	root.RawQuery, root.Fragment = "", ""
 	playlist := root.JoinPath("s.m3u8")
 	return playlist, root, nil
@@ -177,6 +198,9 @@ func (s *Service) serveLiveAsset(w http.ResponseWriter, r *http.Request, asset l
 		if value := r.Header.Get(header); value != "" {
 			req.Header.Set(header, value)
 		}
+	}
+	if asset.cookie != "" {
+		req.Header.Set("Cookie", asset.cookie)
 	}
 	response, err := s.client.Do(req)
 	if err != nil {
@@ -204,7 +228,15 @@ func (s *Service) serveLiveAsset(w http.ResponseWriter, r *http.Request, asset l
 			http.Error(w, "live playlist unavailable", http.StatusBadGateway)
 			return
 		}
-		rewritten, err := s.rewritePlaylist(asset.camera, asset.upstream, asset.root, string(body))
+		cookie := asset.cookie
+		if cookies := response.Cookies(); len(cookies) > 0 {
+			parts := make([]string, 0, len(cookies))
+			for _, item := range cookies {
+				parts = append(parts, (&http.Cookie{Name: item.Name, Value: item.Value}).String())
+			}
+			cookie = strings.Join(parts, "; ")
+		}
+		rewritten, err := s.rewritePlaylist(asset.camera, asset.upstream, asset.root, cookie, string(body))
 		if err != nil {
 			http.Error(w, "live playlist rejected", http.StatusBadGateway)
 			return
@@ -228,7 +260,7 @@ func (s *Service) serveLiveAsset(w http.ResponseWriter, r *http.Request, asset l
 	}
 }
 
-func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlist string) (string, error) {
+func (s *Service) rewritePlaylist(camera string, current, root *url.URL, cookie, playlist string) (string, error) {
 	lines := strings.Split(playlist, "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -236,7 +268,7 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 			continue
 		}
 		if !strings.HasPrefix(trimmed, "#") {
-			rewritten, err := s.registerLiveAsset(camera, current, root, trimmed)
+			rewritten, err := s.registerLiveAsset(camera, current, root, cookie, trimmed)
 			if err != nil {
 				return "", err
 			}
@@ -249,7 +281,7 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 				return match
 			}
 			parts := hlsURIAttribute.FindStringSubmatch(match)
-			rewritten, err := s.registerLiveAsset(camera, current, root, parts[1])
+			rewritten, err := s.registerLiveAsset(camera, current, root, cookie, parts[1])
 			if err != nil {
 				rewriteErr = err
 				return match
@@ -267,10 +299,13 @@ func (s *Service) rewritePlaylist(camera string, current, root *url.URL, playlis
 	if s.config.ShinobiURL != nil && strings.Contains(rewritten, s.config.ShinobiURL.Host) {
 		return "", fmt.Errorf("playlist contains upstream host")
 	}
+	if s.config.LiveHLSURL != nil && strings.Contains(rewritten, s.config.LiveHLSURL.Host) {
+		return "", fmt.Errorf("playlist contains live upstream host")
+	}
 	return rewritten, nil
 }
 
-func (s *Service) registerLiveAsset(camera string, current, root *url.URL, raw string) (string, error) {
+func (s *Service) registerLiveAsset(camera string, current, root *url.URL, cookie, raw string) (string, error) {
 	reference, err := url.Parse(raw)
 	if err != nil || reference.User != nil || reference.Fragment != "" || hasTraversal(reference) {
 		return "", fmt.Errorf("invalid live asset URI")
@@ -291,6 +326,14 @@ func (s *Service) registerLiveAsset(camera string, current, root *url.URL, raw s
 			delete(s.live, id)
 		}
 	}
+	for id, asset := range s.live {
+		if asset.camera == camera && asset.upstream.String() == resolved.String() && asset.root.String() == root.String() && asset.cookie == cookie {
+			asset.expires = now.Add(liveAssetTTL)
+			s.live[id] = asset
+			s.liveMu.Unlock()
+			return "/api/v1/live/" + url.PathEscape(camera) + "/segments/" + id, nil
+		}
+	}
 	if len(s.live) >= maxLiveAssets {
 		var oldestID string
 		var oldestExpiry time.Time
@@ -301,7 +344,7 @@ func (s *Service) registerLiveAsset(camera string, current, root *url.URL, raw s
 		}
 		delete(s.live, oldestID)
 	}
-	s.live[token] = liveAsset{camera: camera, upstream: resolved, root: root, expires: now.Add(liveAssetTTL)}
+	s.live[token] = liveAsset{camera: camera, upstream: resolved, root: root, cookie: cookie, expires: now.Add(liveAssetTTL)}
 	s.liveMu.Unlock()
 	return "/api/v1/live/" + url.PathEscape(camera) + "/segments/" + token, nil
 }
@@ -314,14 +357,22 @@ func (s *Service) takeLiveAsset(camera, token string) (liveAsset, bool) {
 		delete(s.live, token)
 		return liveAsset{}, false
 	}
+	asset.expires = time.Now().Add(liveAssetTTL)
+	s.live[token] = asset
 	return asset, true
 }
 
 func (s *Service) trustedLiveURL(candidate, root *url.URL) bool {
-	if candidate == nil || root == nil || s.config.ShinobiURL == nil || candidate.User != nil || candidate.Fragment != "" {
+	if candidate == nil || root == nil || candidate.User != nil || candidate.Fragment != "" {
 		return false
 	}
 	trusted := s.config.ShinobiURL
+	if s.config.LiveHLSURL != nil {
+		trusted = s.config.LiveHLSURL
+	}
+	if trusted == nil {
+		return false
+	}
 	if candidate.Scheme != trusted.Scheme || candidate.Host != trusted.Host {
 		return false
 	}

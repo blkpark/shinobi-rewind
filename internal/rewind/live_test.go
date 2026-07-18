@@ -26,7 +26,7 @@ func liveTestService(t *testing.T, upstream http.Handler) (*Service, *httptest.S
 		t.Fatal(err)
 	}
 	service := NewService(Config{
-		ShinobiURL: base, ShinobiKey: "sensitive-api-key", ShinobiGroup: "private-group", HeaderTimeout: time.Second,
+		ShinobiURL: base, ShinobiKey: "sensitive-api-key", ShinobiGroup: "private-group", ShinobiLowChannel: "0", HeaderTimeout: time.Second,
 	}, testSource{cameras: []Camera{{ID: "CAM-1"}, {ID: "CAM-2"}}})
 	return service, server
 }
@@ -74,6 +74,11 @@ func TestLiveHLSProxyRewritesNestedAssetsAndStreamsOpaqueSegment(t *testing.T) {
 	variantPath := proxiedLivePath.FindString(playlist.Body.String())
 	if variantPath == "" || strings.Contains(playlist.Body.String(), upstream.URL) || strings.Contains(playlist.Body.String(), "sensitive-api-key") || strings.Contains(playlist.Body.String(), "variant.m3u8") {
 		t.Fatalf("playlist was not safely rewritten: %q", playlist.Body.String())
+	}
+	playlistAgain := httptest.NewRecorder()
+	service.Handler().ServeHTTP(playlistAgain, httptest.NewRequest(http.MethodGet, "/api/v1/live/CAM-1/playlist.m3u8?quality=high", nil))
+	if next := proxiedLivePath.FindString(playlistAgain.Body.String()); next != variantPath {
+		t.Fatalf("stable live asset got a new token: %q != %q", next, variantPath)
 	}
 
 	variant := httptest.NewRecorder()
@@ -167,8 +172,8 @@ func TestLiveHLSProxyHonorsAllowlistQualityAndCancellation(t *testing.T) {
 	defer upstream.Close()
 
 	for raw, want := range map[string]int{
-		"/api/v1/live/unknown/playlist.m3u8":           http.StatusNotFound,
-		"/api/v1/live/CAM-1/playlist.m3u8?quality=low": http.StatusUnprocessableEntity,
+		"/api/v1/live/unknown/playlist.m3u8":              http.StatusNotFound,
+		"/api/v1/live/CAM-1/playlist.m3u8?quality=medium": http.StatusUnprocessableEntity,
 	} {
 		response := httptest.NewRecorder()
 		service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, raw, nil))
@@ -275,20 +280,24 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 	defer upstream.Close()
 	response := httptest.NewRecorder()
 	service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/live/capabilities", nil))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"lowQuality":false`) || !strings.Contains(response.Body.String(), `"transport":"hls"`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"lowQuality":true`) || !strings.Contains(response.Body.String(), `"transport":"hls"`) {
 		t.Fatalf("capabilities = %d %q", response.Code, response.Body.String())
 	}
 
-	_, root, err := service.liveURLs("CAM-1")
+	_, root, err := service.liveURLs("CAM-1", "high")
 	if err != nil {
 		t.Fatal(err)
+	}
+	low, lowRoot, err := service.liveURLs("CAM-1", "low")
+	if err != nil || !strings.HasSuffix(low.Path, "/CAM-1/0/s.m3u8") || !strings.HasSuffix(lowRoot.Path, "/CAM-1/0") {
+		t.Fatalf("low live URL = %v, root = %v, err = %v", low, lowRoot, err)
 	}
 	service.liveMu.Lock()
 	for i := 0; i < maxLiveAssets; i++ {
 		service.live[fmt.Sprintf("%032x", i)] = liveAsset{camera: "CAM-1", upstream: root.JoinPath("old.ts"), root: root, expires: time.Now().Add(time.Hour + time.Duration(i))}
 	}
 	service.liveMu.Unlock()
-	if _, err := service.registerLiveAsset("CAM-1", root.JoinPath("s.m3u8"), root, "new.ts"); err != nil {
+	if _, err := service.registerLiveAsset("CAM-1", root.JoinPath("s.m3u8"), root, "", "new.ts"); err != nil {
 		t.Fatal(err)
 	}
 	service.liveMu.Lock()
@@ -303,5 +312,49 @@ func TestLiveCapabilitiesAndRegistryBound(t *testing.T) {
 	demo.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/live/capabilities", nil))
 	if !strings.Contains(response.Body.String(), `"transport":null`) {
 		t.Fatalf("demo capabilities = %q", response.Body.String())
+	}
+}
+
+func TestDedicatedLiveBridgeUsesSeparateHighAndLowPaths(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/index.m3u8") {
+			http.SetCookie(w, &http.Cookie{Name: "hls_session", Value: "private"})
+			_, _ = io.WriteString(w, "#EXTM3U\nsegment.ts\n")
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/segment.ts") && r.Header.Get("Cookie") == "hls_session=private" {
+			_, _ = io.WriteString(w, "frame")
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL + "/hls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(Config{LiveHLSURL: base}, testSource{cameras: []Camera{{ID: "CAM-1"}}})
+	high, highRoot, err := service.liveURLs("CAM-1", "high")
+	if err != nil || !strings.HasSuffix(high.Path, "/hls/camcam-1high/index.m3u8") || high.RawQuery != "cookieCheck=1" || !strings.HasSuffix(highRoot.Path, "/hls/camcam-1high") {
+		t.Fatalf("high live URL = %v, root = %v, err = %v", high, highRoot, err)
+	}
+	low, lowRoot, err := service.liveURLs("CAM-1", "low")
+	if err != nil || !strings.HasSuffix(low.Path, "/hls/camcam-1low/index.m3u8") || low.RawQuery != "cookieCheck=1" || !strings.HasSuffix(lowRoot.Path, "/hls/camcam-1low") {
+		t.Fatalf("low live URL = %v, root = %v, err = %v", low, lowRoot, err)
+	}
+	response := httptest.NewRecorder()
+	service.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/live/capabilities", nil))
+	if !strings.Contains(response.Body.String(), `"lowQuality":true`) {
+		t.Fatalf("capabilities = %q", response.Body.String())
+	}
+	playlist := httptest.NewRecorder()
+	service.Handler().ServeHTTP(playlist, httptest.NewRequest(http.MethodGet, "/api/v1/live/CAM-1/playlist.m3u8?quality=low", nil))
+	if playlist.Code != http.StatusOK || proxiedLivePath.FindString(playlist.Body.String()) == "" {
+		t.Fatalf("dedicated playlist = %d %q", playlist.Code, playlist.Body.String())
+	}
+	segment := httptest.NewRecorder()
+	service.Handler().ServeHTTP(segment, httptest.NewRequest(http.MethodGet, proxiedLivePath.FindString(playlist.Body.String()), nil))
+	if segment.Code != http.StatusOK || segment.Body.String() != "frame" || segment.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("dedicated segment = %d %q cookie=%q", segment.Code, segment.Body.String(), segment.Header().Get("Set-Cookie"))
 	}
 }
