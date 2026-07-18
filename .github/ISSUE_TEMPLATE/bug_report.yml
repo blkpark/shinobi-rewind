@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible, non-sensitive defect.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include footage, RTSP URLs, camera credentials, private IP addresses, API keys, or request headers. Use SECURITY.md for suspected vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Safe reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true

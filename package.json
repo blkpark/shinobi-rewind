@@ -2,6 +2,19 @@
   "name": "shinobi-rewind",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blkpark/shinobi-rewind.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blkpark/shinobi-rewind/issues"
+  },
+  "homepage": "https://github.com/blkpark/shinobi-rewind#readme",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

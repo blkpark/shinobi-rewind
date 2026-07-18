@@ -1,8 +1,8 @@
 # 실시간 관제 V1 제품 명세
 
-상태: 운영 HQ/LQ HLS 연결, 30분 안정성 proof 진행 중
+상태: 구현 완료, 실환경 안정성 검증은 배포 환경별로 수행
 작성일: 2026-07-16
-대상: Shinobi Rewind 내부 운영자
+대상: Shinobi Rewind self-hosted 운영자
 
 ## 문제와 목표
 
@@ -88,12 +88,12 @@ Chrome에서 native HLS 지원을 가정하지 않는다. 구현 착수 전 아�
 
 playlist rewrite와 segment lookup은 server-side registry를 사용한다. camera route id는 기존 검색·녹화·layout 계약의 allowlisted public id(`CAM-###`)를 재사용하며 credential이 아니다. 별도 camera id mapping은 P0에서 만들지 않고, upstream asset path와 segment id만 opaque 처리한다. upstream host, API key, group key와 raw RTSP/HLS URL을 response, HTML, query, error, structured log에 넣지 않는다.
 
-### 운영 전제
+### 배포 전제
 
-- 운영 6대는 Hikvision `101` main stream을 고화질 HLS/녹화에 사용하고, `102` substream을 Shinobi static stream channel `0`의 저대역폭 HLS로 노출한다. Rewind가 `toggleSubstream`처럼 upstream 상태를 변경하지 않는다.
-- 한 브라우저가 카메라 RTSP에 직접 연결하지 않고 Shinobi가 restream owner가 된다.
-- 운영 read-only key는 `get_monitors`, `watch_videos`, `watch_stream`만 허용하고 mutation, socket auth, control, delete 권한은 모두 거부한다.
-- 현재 monitor 설정에서 credential이 포함된 substream 입력이 관찰되었으므로 실시간 기능 출시 전에 CAM-201~206 RTSP credential을 회전하고 log redaction을 검증한다.
+- 설치자는 카메라의 main/sub stream을 자신의 Shinobi 또는 별도 bridge에 연결한다. Rewind는 upstream camera input을 변경하지 않는다.
+- 브라우저는 카메라 RTSP에 직접 연결하지 않고, credential-free same-origin HLS endpoint만 요청한다.
+- Shinobi key는 필요한 read 권한만 허용하고 mutation, control, delete 권한은 거부한다.
+- 카메라 credential은 배포 환경의 secret store에만 두며, 출시 전 rotation과 log redaction을 검증한다.
 
 ## P0 / P1 / P2
 
@@ -168,20 +168,13 @@ playlist rewrite와 segment lookup은 server-side registry를 사용한다. came
 - 외부 WAN 공개
 - detector trust gate 이전의 motion 자동 포커스
 
-## 2026-07-16 구현 증빙과 남은 gate
+## 공개 가능한 구현 증빙
 
 - Go same-origin HLS proxy는 nested playlist, `EXT-X-KEY`, `EXT-X-MAP`을 포함한 URI rewrite, exact host/root pinning, traversal·redirect 차단, 1MiB playlist 제한, Range/HEAD/416/cancel streaming, sanitized 403, 5분 TTL/4,096개 registry bound를 구현했다.
 - live frontend는 독립 clock/state, 4개 layout, primary swap, camera별 retry/stale 상태, hidden-tab cleanup, lazy `hls.js`, single audio, PiP/fullscreen state sync, completed recording handoff를 구현했다.
 - `go test ./...`, race, vet, frontend typecheck, 25 tests, build가 통과했다. demo 6대로 1280×720 3×2/주+5 no-scroll, primary swap, visible-only summary, console error 0건을 브라우저에서 확인했다.
-- 운영 `watch_stream` 권한, CAM-201~206 RTSP credential 회전, static LQ channel이 준비되지 않아 실제 HLS first-frame/30분 안정성/camera disconnect/LQ→HQ hold/session cleanup/accessibility proof는 아직 차단 상태다. 이 gate 전에는 배포 완료로 판정하지 않는다.
-
-## 2026-07-17 운영 HLS 연결
-
-- Hikvision 공식 채널 규칙과 운영 설정을 대조해 CAM-201~206의 `101` main, `102` substream을 확인했다. CAM-201 `102`는 H.264 640×360 20fps로 직접 probe했다.
-- 최소권한 API key에 `watch_stream`만 추가하고 mutation/control/delete 권한은 계속 거부했다. Shinobi 권한 cache 갱신 후 CAM-201 main HLS가 200과 재작성 segment를 반환했다.
-- 6대 모두 `102`를 additional input feed로 연결하고 static HLS channel `0`을 만들었다. 운영에서 main 6개와 low 6개 playlist 생성을 확인했다.
-- Rewind는 `SHINOBI_LOW_STREAM_CHANNEL=0`이 명시된 배포에서만 low capability를 노출한다. 설정이 없거나 잘못된 quality 요청은 422로 실패한다.
-- 남은 release gate는 실제 브라우저 6대 first-frame, primary HQ/supporting LQ 전환, 30분 안정성, 한 카메라 disconnect 격리, session cleanup, CAM-201~206 RTSP credential 회전이다.
+- 실제 카메라 모델, monitor ID, stream channel, 네트워크 주소, 영상, credential rotation 기록은 이 공개 저장소에 넣지 않는다. 그런 운영 검증은 설치자 환경의 비공개 runbook에서 수행한다.
+- 각 설치자는 첫 frame, high/low 전환, 30분 안정성, 한 카메라 disconnect 격리, session cleanup, credential redaction을 자신의 환경에서 검증한 뒤 운영에 투입해야 한다.
 
 ## 조사 근거
 

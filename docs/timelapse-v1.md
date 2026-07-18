@@ -14,11 +14,11 @@ ask Shinobi to build a video.
 
 ## Why this shape
 
-- The running Shinobi already stores `Timelapse Frames` for CAM-201 through CAM-206.
+- Shinobi can store `Timelapse Frames` for configured monitors. Availability and
+  cadence are installation-specific and must be measured before enabling this mode.
 - Current frames are representative images created after a completed recording
-  segment. A measured full day contained 144–159 frames per camera, roughly one
-  every 9–10 minutes. Their cadence is suitable for scanning a long period, but not
-  for pretending that they are smooth CCTV footage.
+  segment. Their cadence can be useful for scanning a long period, but must not be
+  presented as smooth or frame-accurate CCTV footage.
 - Six high-speed MP4 players would repeat the existing Range-request and broken-file
   failure modes.
 - Shinobi's `timelapseBuildVideo` endpoint writes a new FileBin artifact and requires
@@ -40,7 +40,7 @@ ask Shinobi to build a video.
 Suggested read-only BFF surface:
 
 ```text
-GET /api/v1/timelapse?start=<RFC3339>&end=<RFC3339>&camera=CAM-201,...
+GET /api/v1/timelapse?start=<RFC3339>&end=<RFC3339>&camera=CAM-DEMO-01,...
 GET /api/v1/timelapse/{opaqueFrameID}
 ```
 

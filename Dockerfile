@@ -16,6 +16,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /shinobi-rewind ./cmd/s
 
 FROM alpine:3.22
 COPY --from=build /shinobi-rewind /shinobi-rewind
+COPY LICENSE THIRD_PARTY_NOTICES.md /licenses/
 ENV LISTEN_ADDR=:8080
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
