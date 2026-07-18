@@ -56,6 +56,17 @@ func (s archiveTestSource) Capabilities(context.Context, []Camera, []string, tim
 }
 func (s archiveTestSource) Ready(context.Context) error { return nil }
 
+func newArchiveTestService(t *testing.T, config Config, source Source) *Service {
+	t.Helper()
+	service := NewService(config, source)
+	if service.archive != nil {
+		service.archive.space = func(string) (uint64, uint64, error) {
+			return 10 << 30, 9 << 30, nil
+		}
+	}
+	return service
+}
+
 func postArchive(t *testing.T, service *Service, body string) (int, Archive) {
 	t.Helper()
 	response := httptest.NewRecorder()
@@ -108,7 +119,7 @@ func TestArchiveCopiesCompletedSegmentIdempotentlyAndServesRange(t *testing.T) {
 		timelines: map[string]Timeline{"2026-07-15\x00CAM-1": {CameraID: "CAM-1", Segments: []Segment{{ID: "source-secret", CameraID: "CAM-1", Start: day, End: day.Add(15 * time.Minute), State: "recorded", Source: upstream.URL + "/private/original.mp4?key=secret"}}}},
 	}
 	root := t.TempDir()
-	service := NewService(Config{ArchiveRoot: root, HeaderTimeout: time.Second}, source)
+	service := newArchiveTestService(t, Config{ArchiveRoot: root, HeaderTimeout: time.Second}, source)
 	body := `{"at":"2026-07-15T00:05:00+09:00","cameraIds":["CAM-1"],"label":"Gate"}`
 	status, created := postArchive(t, service, body)
 	if status != http.StatusAccepted || created.ID == "" {
@@ -145,7 +156,7 @@ func TestArchiveCopiesCompletedSegmentIdempotentlyAndServesRange(t *testing.T) {
 	if _, err := os.Stat(service.archive.artifactPath(item.ID, artifact.ID) + ".part"); !os.IsNotExist(err) {
 		t.Fatalf("partial file remains: %v", err)
 	}
-	restarted := NewService(Config{ArchiveRoot: root, HeaderTimeout: time.Second}, source)
+	restarted := newArchiveTestService(t, Config{ArchiveRoot: root, HeaderTimeout: time.Second}, source)
 	restartedResponse := httptest.NewRecorder()
 	restarted.Handler().ServeHTTP(restartedResponse, httptest.NewRequest(http.MethodGet, artifact.VideoURL, nil))
 	if restartedResponse.Code != http.StatusOK || !bytes.Equal(restartedResponse.Body.Bytes(), video) {
@@ -165,7 +176,7 @@ func TestArchiveUsesHalfOpenBoundaryAndDateFilters(t *testing.T) {
 			{CameraID: "CAM-1", Start: day.Add(15 * time.Minute), End: day.Add(30 * time.Minute), State: "recorded", Source: second.URL},
 		}},
 	}}
-	service := NewService(Config{ArchiveRoot: t.TempDir()}, source)
+	service := newArchiveTestService(t, Config{ArchiveRoot: t.TempDir()}, source)
 	_, created := postArchive(t, service, `{"at":"2026-07-15T00:15:00+09:00","cameraIds":["CAM-1"]}`)
 	item := waitArchive(t, service, created.ID, "verified")
 	response := httptest.NewRecorder()
@@ -191,7 +202,7 @@ func TestArchiveReportsWaitingAndPerCameraPartial(t *testing.T) {
 		source := archiveTestSource{cameras: []Camera{{ID: "CAM-1"}}, timelines: map[string]Timeline{
 			day.Format("2006-01-02") + "\x00CAM-1": {CameraID: "CAM-1", Segments: []Segment{{CameraID: "CAM-1", Start: now.Add(-time.Minute), End: now.Add(time.Minute), State: "recorded", Source: video.URL}}},
 		}}
-		service := NewService(Config{ArchiveRoot: t.TempDir()}, source)
+		service := newArchiveTestService(t, Config{ArchiveRoot: t.TempDir()}, source)
 		body, _ := json.Marshal(map[string]any{"at": now.Format(time.RFC3339), "cameraIds": []string{"CAM-1"}})
 		_, created := postArchive(t, service, string(body))
 		item := waitArchive(t, service, created.ID, "waiting_recording")
@@ -205,7 +216,7 @@ func TestArchiveReportsWaitingAndPerCameraPartial(t *testing.T) {
 			"2026-07-15\x00CAM-1": {CameraID: "CAM-1", Segments: []Segment{{CameraID: "CAM-1", Start: day, End: day.Add(time.Hour), State: "recorded", Source: video.URL}}},
 			"2026-07-15\x00CAM-2": {CameraID: "CAM-2"},
 		}}
-		service := NewService(Config{ArchiveRoot: t.TempDir()}, source)
+		service := newArchiveTestService(t, Config{ArchiveRoot: t.TempDir()}, source)
 		_, created := postArchive(t, service, `{"at":"2026-07-15T00:30:00+09:00","cameraIds":["CAM-2","CAM-1"]}`)
 		item := waitArchive(t, service, created.ID, "partial")
 		statuses := map[string]string{}
@@ -225,7 +236,7 @@ func TestArchiveValidationAndDisabledState(t *testing.T) {
 	if response.Code != http.StatusNotImplemented {
 		t.Fatalf("disabled status = %d", response.Code)
 	}
-	service := NewService(Config{ArchiveRoot: t.TempDir()}, archiveTestSource{cameras: []Camera{{ID: "CAM-1"}}})
+	service := newArchiveTestService(t, Config{ArchiveRoot: t.TempDir()}, archiveTestSource{cameras: []Camera{{ID: "CAM-1"}}})
 	for _, body := range []string{
 		`{"at":"bad","cameraIds":["CAM-1"]}`,
 		`{"at":"2026-07-15T00:00:00+09:00","cameraIds":[]}`,
@@ -287,7 +298,7 @@ func TestArchiveRejectsUnsafeCopies(t *testing.T) {
 			source := archiveTestSource{cameras: []Camera{{ID: "CAM-1"}}, timelines: map[string]Timeline{
 				"2026-07-15\x00CAM-1": {CameraID: "CAM-1", Segments: []Segment{{CameraID: "CAM-1", Start: day, End: day.Add(time.Hour), State: "recorded", Source: upstream.URL}}},
 			}}
-			service := NewService(Config{ArchiveRoot: t.TempDir()}, source)
+			service := newArchiveTestService(t, Config{ArchiveRoot: t.TempDir()}, source)
 			if test.space != nil {
 				service.archive.space = test.space
 			}
