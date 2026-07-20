@@ -1,12 +1,14 @@
-.PHONY: build test lint typecheck fmt run
-build:
+.PHONY: web build test lint typecheck fmt run
+web:
 	npm run build
+
+build: web
 	go build ./cmd/shinobi-rewind
-test:
+test: web
 	go test ./...
 	go test -race ./...
 	npm test
-lint:
+lint: web
 	go vet ./...
 	npm run lint
 typecheck:
