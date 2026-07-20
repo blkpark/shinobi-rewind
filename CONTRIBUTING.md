@@ -9,6 +9,8 @@ Thanks for improving Shinobi Rewind. Keep each pull request focused and avoid un
 3. Run `make test lint typecheck build`.
 4. Describe the user-visible behavior and the verification performed. Do not claim live-camera proof unless it was actually run.
 
+`npm` cache location is build-host configuration, not application configuration. If a build host requires a custom cache path, set `NPM_CONFIG_CACHE` outside this repository; never commit a user or server path in `.npmrc` or `.env`.
+
 ## Reporting bugs
 
 Use a public issue only for reproducible, non-sensitive defects. Remove monitor names, URLs, video IDs, and request headers. Report suspected vulnerabilities or leaks privately as described in [SECURITY.md](SECURITY.md).

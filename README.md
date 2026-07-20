@@ -22,6 +22,8 @@ docker pull ghcr.io/blkpark/shinobi-rewind:v0.1.0
 
 The image contains this project's license and [third-party notices](THIRD_PARTY_NOTICES.md). It still requires a local `.env`, a trusted network, and an existing Shinobi deployment.
 
+`npm` is only required to build the embedded web UI; the running Go service and release image do not use an npm cache. A build host that needs a custom cache location can set `NPM_CONFIG_CACHE` in its shell or CI environment. Do not put that build-only path in the application's runtime `.env` file.
+
 ## Security boundary
 
 Shinobi Rewind is designed for a trusted LAN or an authenticated VPN/reverse proxy. It does not provide user authentication. In particular, archive creation is a write operation, so never expose the service directly to the public internet. Keep the default loopback bind unless an external access-control layer protects every route. See [SECURITY.md](SECURITY.md) before operating with real cameras.
