@@ -304,7 +304,7 @@ export function App() {
 
   return <main className="console">
     <header className="topbar">
-      <div className="brand"><ShieldCheck size={23} weight="bold" aria-hidden="true" />{text("영상 관제 콘솔", "Warehouse Video Console")}</div>
+      <div className="brand"><ShieldCheck size={23} weight="bold" aria-hidden="true" />{text("영상 관제 콘솔", "Video Operations Console")}</div>
       <nav aria-label={text("주요 보기", "Primary views")}><button className={view === "live" ? "active" : ""} onClick={() => setView("live")}><Broadcast aria-hidden="true" />{text("실시간 관제", "Live")}</button><button className={view === "search" ? "active" : ""} onClick={() => setView("search")}><MagnifyingGlass aria-hidden="true" />{text("사건 검색", "Search")}</button><button className={view === "control" ? "active" : ""} onClick={() => setView("control")}><Play aria-hidden="true" />{text("녹화 관제", "Playback")}</button></nav>
 		<div className="clock">{kstDateAt(headerSecond)} · KST <strong>{formatTime(headerSecond)}</strong></div>
 		<div className="language-switch" role="group" aria-label={text("언어", "Language")}><button className={language === "ko" ? "active" : ""} aria-pressed={language === "ko"} onClick={() => setLanguage("ko")}>한국어</button><button className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button></div>

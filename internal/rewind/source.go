@@ -49,7 +49,7 @@ func demoAudio(camera string) *bool {
 	return nil
 }
 func (d *demoSource) Cameras(context.Context) ([]Camera, error) {
-	return []Camera{{"CAM-201", "Camera 1", false}, {"CAM-202", "Camera 2", false}, {"CAM-203", "Camera 3", false}, {"CAM-204", "Area A", false}, {"CAM-205", "Area B", false}, {"CAM-206", "Camera 6", false}}, nil
+	return []Camera{{"CAM-201", "Camera 1", false}, {"CAM-202", "Camera 2", false}, {"CAM-203", "Camera 3", false}, {"CAM-204", "Camera 4", false}, {"CAM-205", "Camera 5", false}, {"CAM-206", "Camera 6", false}}, nil
 }
 func (d *demoSource) Timeline(_ context.Context, day time.Time, camera string) (Timeline, error) {
 	var out []Segment
