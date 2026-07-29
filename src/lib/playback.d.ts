@@ -11,3 +11,4 @@ export function applyFocus(state: FocusState, ids: string[], now: number, hold?:
 export function expireFocus(state: FocusState, now: number): FocusState;
 export function focusLayout(count: number): "focus-one" | "focus-two" | "focus-four" | "focus-six";
 export function compactPrimaryLayout(width: number, height: number): boolean;
+export function recordingLayoutExpands(current: "grid" | "primary" | "quad" | "single", next: "grid" | "primary" | "quad" | "single"): boolean;

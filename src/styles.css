@@ -30,6 +30,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .icon-button { display: grid; place-items: center; padding: 8px; }
 
 .control-view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: calc(100dvh - 61px); min-height: 0; }
+.control-view:fullscreen { grid-template-rows: minmax(0, 1fr) auto; height: 100dvh; padding: 8px; background: #03101a; }
+.control-view:fullscreen .controls, .control-view:fullscreen .events { display: none; }
+.control-view:fullscreen .workspace { grid-template-columns: minmax(0, 1fr); }
+.control-view:fullscreen .camera-grid.fullscreen-recording { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .controls { position: relative; display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 5px 8px; }
 .controls label, .toggle-wrap { display: grid; gap: 7px; color: #9eafbd; font-size: 11px; }
 .control-summary { align-self: center; color: #9eafbd; font-size: 12px; }
@@ -184,6 +188,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .transport { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px; padding: 5px; border: 1px solid #1d3b50; border-radius: 6px; background: #071723; }
 .transport button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 78px; padding: 7px 10px; }
 .transport .play { min-width: 68px; font-size: 21px; }
+.layout-sync { color: #7fc4ff; font-size: 11px; }
 .rates { display: flex; gap: 5px; }
 .rates button { min-width: 39px; padding-inline: 6px; }
 .favorite-on { color: #ffd166; border-color: #8a6c28 !important; }

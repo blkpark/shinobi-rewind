@@ -1,4 +1,4 @@
-import { ArrowsOut, Camera as CameraIcon, PictureInPicture, SpeakerHigh, SpeakerSlash, Star, VideoCameraSlash } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOut, Camera as CameraIcon, PictureInPicture, SpeakerHigh, SpeakerSlash, Star, VideoCameraSlash } from "@phosphor-icons/react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cameraLabel } from "../lib/camera.js";
@@ -10,19 +10,21 @@ import type { Camera, Capability, Segment } from "../lib/types";
 type Props = {
   layout: RecordingLayout; cameras: Camera[]; segments: Segment[]; timelinePending: string[]; timelineFailed: string[]; master: number; capability: Capability; focused: string[]; pulses: Record<string, number>;
   primaryCamera: string; onPrimary: (camera: string) => void; seekRevision: number;
-  primaryRatio: number; onPrimaryRatio: (ratio: number) => void; onPrimarySyncing: (syncing: boolean) => void;
+  primaryRatio: number; onPrimaryRatio: (ratio: number) => void; onPrimarySyncing: (syncing: boolean) => void; layoutSyncing: boolean; onLayoutSynced: () => void;
   videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; onReady: (camera: Camera, video: HTMLVideoElement) => void; onMediaMissing: () => void;
   audibleCamera: string | null; onAudible: (camera: string, hasAudio: boolean | null) => void;
   onFavorite: (camera: string) => void; isFavorite: (camera: string) => boolean; onPiPStatus: (message: string) => void;
+  fullscreenCamera: string | null; onFullscreen: (camera: string) => void;
 };
 
 export type RecordingLayout = "grid" | "primary" | "quad" | "single";
 
-export function CameraGrid({ layout: recordingLayout, cameras, segments, timelinePending, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, seekRevision, videos, onReady, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus }: Props) {
+export function CameraGrid({ layout: recordingLayout, cameras, segments, timelinePending, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, layoutSyncing, onLayoutSynced, seekRevision, videos, onReady, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenCamera, onFullscreen }: Props) {
   const { text } = useLanguage();
   const grid = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [readySegments, setReadySegments] = useState<Record<string, string>>({});
   const ordered = useMemo(() => {
     const primary = cameras.find((camera) => camera.id === primaryCamera) || cameras[0];
     if (!primary) return [];
@@ -48,27 +50,43 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
     return () => observer.disconnect();
   }, []);
 
-  const visible = focused.length > 1 ? ordered : recordingLayout === "single" ? ordered.slice(0, 1) : recordingLayout === "quad" ? ordered.slice(0, 4) : ordered;
-  const layout = focused.length > 1 ? focusLayout(focused.length) : recordingLayout === "primary" ? compact ? "compact-primary" : "primary-layout" : `recording-${recordingLayout}`;
+  const visible = fullscreenCamera ? ordered.filter((camera) => camera.id === fullscreenCamera) : focused.length > 1 ? ordered : recordingLayout === "single" ? ordered.slice(0, 1) : recordingLayout === "quad" ? ordered.slice(0, 4) : ordered;
+  const layout = fullscreenCamera ? "recording-single fullscreen-recording" : focused.length > 1 ? focusLayout(focused.length) : recordingLayout === "primary" ? compact ? "compact-primary" : "primary-layout" : `recording-${recordingLayout}`;
+  useEffect(() => {
+    if (!layoutSyncing) return;
+    if (capability.demo) { onLayoutSynced(); return; }
+    const pending = visible.some((camera) => {
+      if (timelineFailed.includes(camera.id)) return false;
+      if (timelinePending.includes(camera.id)) return true;
+      const target = segmentAt(segments.filter((item) => item.cameraId === camera.id), master);
+      return Boolean(target && readySegments[camera.id] !== target.id);
+    });
+    if (!pending) onLayoutSynced();
+  }, [capability.demo, layoutSyncing, master, onLayoutSynced, readySegments, segments, timelineFailed, timelinePending, visible]);
+  const handleReady = (camera: Camera, video: HTMLVideoElement) => {
+    if (video.dataset.segmentId) setReadySegments((current) => ({ ...current, [camera.id]: video.dataset.segmentId! }));
+    onReady(camera, video);
+  };
   return <div ref={grid} className={`camera-grid ${layout}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
     {visible.map((camera, index) => <CameraTile key={camera.id} {...{
       camera, cameraSegments: segments.filter((item) => item.cameraId === camera.id), master, capability,
       timelineLoading: timelinePending.includes(camera.id), timelineFailed: timelineFailed.includes(camera.id),
-      focused: focused.includes(camera.id), pulse: pulses[camera.id] > Date.now(), primary: focused.length > 1 || recordingLayout === "primary" || recordingLayout === "single" ? index === 0 : false,
-      seekRevision, videos, onReady, onPrimary, onPrimarySyncing, onMediaMissing,
-      audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus,
+      focused: focused.includes(camera.id), pulse: pulses[camera.id] > Date.now(), primary: fullscreenCamera ? index === 0 : focused.length > 1 || recordingLayout === "primary" || recordingLayout === "single" ? index === 0 : false,
+      seekRevision, videos, onReady: handleReady, onPrimary, onPrimarySyncing, onMediaMissing,
+      audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenActive: fullscreenCamera === camera.id, onFullscreen,
     }} />)}
     {layout === "primary-layout" && visible.length > 1 && <div className={`layout-resizer ${resizing ? "resizing" : ""}`} role="separator" aria-label={text("주 화면 크기 조절", "Resize primary view")} aria-orientation="vertical" aria-valuemin={25} aria-valuemax={60} aria-valuenow={Math.round(primaryRatio)} tabIndex={0} title={text("드래그하여 주 화면 크기 조절 · 자동 저장", "Drag to resize primary view · saved automatically")} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); resize(event.clientX); }} onPointerMove={(event) => { if (resizing) resize(event.clientX); }} onPointerUp={(event) => { resize(event.clientX); setResizing(false); }} onPointerCancel={() => setResizing(false)} onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); onPrimaryRatio(Math.max(25, Math.min(60, primaryRatio + (event.key === "ArrowLeft" ? -2 : 2)))); } }}><span /></div>}
     {ordered.length === 0 && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" />{text("카메라를 선택하세요.", "Select a camera.")}</div>}
   </div>;
 }
 
-function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, master, capability, focused, pulse, primary, seekRevision, videos, onReady, onPrimary, onPrimarySyncing, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus }: {
+function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, master, capability, focused, pulse, primary, seekRevision, videos, onReady, onPrimary, onPrimarySyncing, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenActive, onFullscreen }: {
   camera: Camera; cameraSegments: Segment[]; timelineLoading: boolean; timelineFailed: boolean; master: number; capability: Capability; focused: boolean; pulse: boolean; primary: boolean; seekRevision: number;
   videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; onReady: (camera: Camera, video: HTMLVideoElement) => void; onPrimary: (camera: string) => void;
   onPrimarySyncing: (syncing: boolean) => void; onMediaMissing: () => void;
   audibleCamera: string | null; onAudible: (camera: string, hasAudio: boolean | null) => void;
   onFavorite: (camera: string) => void; isFavorite: (camera: string) => boolean; onPiPStatus: (message: string) => void;
+  fullscreenActive: boolean; onFullscreen: (camera: string) => void;
 }) {
   const { language, text } = useLanguage();
   const target = segmentAt(cameraSegments, master) as Segment | undefined;
@@ -131,11 +149,9 @@ function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, m
       .then((response) => { if (response.status === 404) onMediaMissing(); })
       .catch(() => undefined);
   };
-  const fullscreen = async (event: React.MouseEvent<HTMLButtonElement>) => {
+  const fullscreen = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    const element = event.currentTarget.closest("article");
-    if (!element) { onPiPStatus(text("전체화면 대상을 찾을 수 없습니다.", "Fullscreen target not found.")); return; }
-    await reportDisplayRequest(() => element.requestFullscreen(), language === "ko" ? `${label.title} 전체화면으로 전환했습니다.` : `${label.title} entered fullscreen.`, text("전체화면 전환이 차단되었습니다.", "Fullscreen was blocked."), onPiPStatus);
+    onFullscreen(camera.id);
   };
   const pictureInPicture = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -143,9 +159,7 @@ function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, m
     const mode = pipMode(Boolean(video && target), Boolean(document.pictureInPictureEnabled && typeof video?.requestPictureInPicture === "function"));
     if (mode === "unavailable" || !video || !target) { onPiPStatus(text("재생 가능한 녹화가 없어 PiP를 열 수 없습니다.", "PiP requires a playable recording.")); return; }
     if (mode === "fullscreen") {
-      const element = event.currentTarget.closest("article");
-      if (!element) { onPiPStatus(text("PiP와 전체화면을 사용할 수 없습니다.", "PiP and fullscreen are unavailable.")); return; }
-      await reportDisplayRequest(() => element.requestFullscreen(), text("PiP 미지원 · 전체화면으로 전환했습니다.", "PiP unavailable · entered fullscreen."), text("PiP가 지원되지 않고 전체화면 전환도 차단되었습니다.", "PiP is unavailable and fullscreen was blocked."), onPiPStatus);
+      onFullscreen(camera.id);
       return;
     }
     await reportDisplayRequest(async () => {
@@ -160,7 +174,7 @@ function CameraTile({ camera, cameraSegments, timelineLoading, timelineFailed, m
       <button className={`camera-action ${isFavorite(camera.id) ? "saved" : ""}`} type="button" onClick={(event) => { event.stopPropagation(); onFavorite(camera.id); }} aria-label={`${label.title} ${text("현재 시각 즐겨찾기", "favorite current time")}`} aria-pressed={isFavorite(camera.id)} title={text("현재 시각 즐겨찾기", "Favorite current time")}><Star weight={isFavorite(camera.id) ? "fill" : "regular"} aria-hidden="true" /></button>
       <button className={`camera-action ${audibleCamera === camera.id ? "audible" : ""}`} type="button" disabled={hasAudio !== true} onClick={(event) => { event.stopPropagation(); onAudible(camera.id, hasAudio); }} aria-label={hasAudio === true ? `${label.title} ${audibleCamera === camera.id ? text("소리 끄기", "mute") : text("소리 듣기", "listen")}` : hasAudio === false ? `${label.title} ${text("음성 없음", "no audio")}` : `${label.title} ${text("음성 정보 확인 불가", "audio status unknown")}`} title={hasAudio === true ? text("이 카메라 소리 듣기", "Listen to this camera") : hasAudio === false ? text("음성 없음", "No audio") : text("음성 정보 확인 불가", "Audio status unknown")}>{hasAudio === true ? <SpeakerHigh aria-hidden="true" /> : <SpeakerSlash aria-hidden="true" />}</button>
       <button className="camera-action" type="button" onClick={pictureInPicture} aria-label={`${label.title} PiP`} title={text("브라우저 밖 PiP", "Picture-in-Picture")}><PictureInPicture aria-hidden="true" /></button>
-      <button className="fullscreen-button" type="button" onClick={fullscreen} aria-label={`${label.title} ${text("전체화면", "fullscreen")}`} title={text("전체화면", "Fullscreen")}><ArrowsOut aria-hidden="true" /></button></span></header>
+      <button className="fullscreen-button" type="button" onClick={fullscreen} aria-label={`${label.title} ${fullscreenActive ? text("전체화면 축소", "exit fullscreen") : text("전체화면", "fullscreen")}`} aria-pressed={fullscreenActive} title={fullscreenActive ? text("전체화면 축소", "Exit fullscreen") : text("전체화면", "Fullscreen")}>{fullscreenActive ? <ArrowsIn aria-hidden="true" /> : <ArrowsOut aria-hidden="true" />}</button></span></header>
     {unavailable ? <div className="preview-unavailable" role={primary ? "status" : "button"} aria-label={primary ? undefined : `${label.title} ${text("주 화면으로 전환", "make primary")}`} tabIndex={primary ? undefined : 0} onClick={() => { if (!primary) onPrimary(camera.id); }} onKeyDown={(event) => { if (!primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(camera.id); } }}><VideoCameraSlash size={31} aria-hidden="true" /><b>{capability.demo ? text("녹화 미리보기 없음", "Recording preview unavailable") : timelineLoading ? text("녹화 목록 불러오는 중", "Loading recordings") : timelineFailed ? text("녹화 목록 확인 불가", "Recording list unavailable") : text("현재 시각 녹화 없음", "No recording at this time")}</b><small>{capability.demo ? text("공개 데모에는 CCTV 영상이 포함되지 않습니다.", "The public demo does not include CCTV footage.") : timelineLoading ? text("카메라 녹화 구간을 확인하고 있습니다.", "Checking camera recording ranges.") : timelineFailed ? text("연결 상태를 확인한 뒤 다시 시도하세요.", "Check the connection and try again.") : text("다른 시각을 선택해 보세요.", "Choose another time.")}</small></div> : <div className="video-frame" role={primary ? undefined : "button"} tabIndex={primary ? undefined : 0} aria-label={primary ? undefined : `${label.title} ${text("주 화면으로 전환", "make primary")}`} onClick={() => { if (!primary) onPrimary(camera.id); }} onKeyDown={(event) => { if (!primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(camera.id); } }}>
       <video className="active" data-segment-id={target.id} ref={videoRef} muted={audibleCamera !== camera.id} playsInline preload="auto" src={`/api/v1/videos/${target.id}`} onLoadedMetadata={(event) => { event.currentTarget.currentTime = videoOffset(target, master); }} onSeeked={(event) => activate(event.currentTarget)} onCanPlay={(event) => activate(event.currentTarget)} onError={(event) => mediaError(event.currentTarget)} />
       {(waiting || failed) && <div className={`video-loading ${failed ? "failed" : delayed ? "delayed" : ""}`} role="status"><b>{failed ? text("녹화를 재생할 수 없음", "Recording cannot be played") : delayed ? text("동기화 지연", "Synchronization delayed") : text("동기화 중", "Synchronizing")}</b>{(failed || delayed) && <button type="button" onClick={(event) => { event.stopPropagation(); retryVideo(); }}>{failed ? text("다시 시도", "Retry") : text("다시 요청", "Request again")}</button>}</div>}

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
-import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
+import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, recordingLayoutExpands, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
 import { clampRate, dayState, favoriteCountInRange, favoriteTimelineRanges, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
@@ -68,6 +68,13 @@ test("packs the primary and five supporting cameras when the grid is not ultra-w
   assert.equal(compactPrimaryLayout(2048, 854), true);
   assert.equal(compactPrimaryLayout(1682, 428), false);
   assert.equal(compactPrimaryLayout(667, 916), false);
+});
+
+test("pauses only when a recording layout reveals more cameras", () => {
+  assert.equal(recordingLayoutExpands("single", "quad"), true);
+  assert.equal(recordingLayoutExpands("quad", "primary"), true);
+  assert.equal(recordingLayoutExpands("primary", "grid"), false);
+  assert.equal(recordingLayoutExpands("grid", "single"), false);
 });
 
 test("OFF keeps focus empty and repeat triggers only extend the finite hold", () => {
@@ -245,7 +252,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
-  assert.match(app, /effectivePlaying = view !== "live" && playing && !primarySyncing/);
+  assert.match(app, /effectivePlaying = view !== "live" && playing && !primarySyncing && !layoutSyncing/);
   assert.equal(grid.match(/<video /g)?.length, 1);
   assert.match(grid, /data-segment-id=\{target\.id\}/);
   assert.match(grid, /method: "HEAD"[\s\S]*response\.status === 404[\s\S]*onMediaMissing/);
@@ -260,11 +267,17 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /removeAttribute\("src"\)[\s\S]*video\.load\(\)/);
   assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelinePending\.includes\(camera\.id\)[\s\S]*timelineFailed\.includes\(camera\.id\)/);
-  assert.match(grid, /requestFullscreen/);
+  assert.match(app, /requestFullscreen/);
   assert.match(grid, /pictureInPictureEnabled/);
   assert.match(grid, /requestPictureInPicture/);
-  assert.match(grid, /requestFullscreen/);
   assert.match(grid, /reportDisplayRequest/);
+  assert.match(app, /ref=\{controlRef\} className="control-view"/);
+  assert.match(app, /document\.exitFullscreen\(\)[\s\S]*element\.requestFullscreen\(\)/);
+  assert.match(grid, /fullscreenCamera \? ordered\.filter/);
+  assert.match(grid, /fullscreenActive \? <ArrowsIn/);
+  assert.match(app, /recordingLayoutExpands\(recordingLayout, value\)/);
+  assert.match(grid, /layoutSyncing[\s\S]*readySegments\[camera\.id\] !== target\.id[\s\S]*onLayoutSynced/);
+  assert.match(styles, /\.control-view:fullscreen \{ grid-template-rows: minmax\(0, 1fr\) auto;[\s\S]*\.fullscreen-recording/);
   assert.match(grid, /className="camera-actions"[\s\S]*현재 시각 즐겨찾기[\s\S]*소리[\s\S]*PiP[\s\S]*전체화면/);
   assert.match(styles, /\.supporting-camera header \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto; grid-template-rows: 22px 26px/);
   assert.match(grid, /ResizeObserver/);

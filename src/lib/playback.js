@@ -65,3 +65,8 @@ export function focusLayout(count) {
 export function compactPrimaryLayout(width, height) {
   return width > 980 && height > 0 && width / height < 2.8;
 }
+
+export function recordingLayoutExpands(current, next) {
+  const size = (layout) => layout === "single" ? 1 : layout === "quad" ? 4 : 6;
+  return size(next) > size(current);
+}
