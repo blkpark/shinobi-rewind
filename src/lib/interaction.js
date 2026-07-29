@@ -130,6 +130,22 @@ export function filterTimelineFavorites(items, cameraIds, day) {
   });
 }
 
+export function favoriteTimelineRanges(items, cameraIds, segments, day) {
+  return filterTimelineFavorites(items, cameraIds, day).flatMap((item) => {
+    const point = Date.parse(item.at);
+    const scope = item.cameraId ? [item.cameraId] : cameraIds;
+    const matches = segments.filter((segment) =>
+      segment.state === "recorded"
+      && scope.includes(segment.cameraId)
+      && Date.parse(segment.start) <= point
+      && point < Date.parse(segment.end)
+    );
+    return matches.length
+      ? matches.map((segment) => ({ id: `${item.id}:${segment.id}`, start: segment.start, end: segment.end, point: item.at }))
+      : [{ id: item.id, start: item.at, end: item.at, point: item.at }];
+  });
+}
+
 export function dayState({ loading, failed, capability, events }) {
   if (loading) return "loading";
   if (failed === "all") return "no_data";

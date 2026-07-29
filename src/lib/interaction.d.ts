@@ -23,5 +23,11 @@ export function timelinePointTime(visibleStart: number, clientX: number, trackLe
 export function includeCameraScope(selected: string[], cameraId: string | null, available: string[], max?: number): string[];
 export function shiftMonth(day: string, amount: number): string;
 export function filterTimelineFavorites(items: Favorite[], cameraIds: string[], day: string): Favorite[];
+export function favoriteTimelineRanges(
+  items: Favorite[],
+  cameraIds: string[],
+  segments: Array<{ id: string; cameraId: string; start: string; end: string; state: string }>,
+  day: string,
+): Array<{ id: string; start: string; end: string; point: string }>;
 export function dayState(input: { loading: boolean; failed: "none" | "partial" | "all"; capability: string; events: number }): "loading" | "no_data" | "partial" | "detector_off" | "events" | "zero_events";
 export function pipMode(hasVideo: boolean, nativeSupported: boolean): "unavailable" | "pip" | "fullscreen";

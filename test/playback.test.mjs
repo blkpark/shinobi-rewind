@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, favoriteTimelineRanges, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -215,6 +215,14 @@ test("timeline favorites include only global and selected-camera marks on the KS
     { id: "hidden-day", cameraId: null, at: "2026-07-14T05:00:00Z" },
   ];
   assert.deepEqual(filterTimelineFavorites(favorites, ["CAM-201"], "2026-07-15").map((item) => item.id), ["global", "selected"]);
+  const ranges = favoriteTimelineRanges(favorites, ["CAM-201"], [
+    { id: "recorded-1", cameraId: "CAM-201", state: "recorded", start: "2026-07-15T04:55:00Z", end: "2026-07-15T05:10:00Z" },
+    { id: "gap-1", cameraId: "CAM-201", state: "gap", start: "2026-07-15T05:55:00Z", end: "2026-07-15T06:10:00Z" },
+  ], "2026-07-15");
+  assert.deepEqual(ranges, [
+    { id: "global:recorded-1", start: "2026-07-15T04:55:00Z", end: "2026-07-15T05:10:00Z", point: "2026-07-15T05:00:00Z" },
+    { id: "selected", start: "2026-07-15T06:00:00Z", end: "2026-07-15T06:00:00Z", point: "2026-07-15T06:00:00Z" },
+  ]);
 });
 
 test("player and timeline keep bounded recovery, fullscreen, and drag wiring", () => {
@@ -256,7 +264,8 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)\?\.getBoundingClientRect\(\)/);
   assert.match(timeline, /timelineDragTime/);
   assert.match(timeline, /timelinePointTime/);
-  assert.match(timeline, /filterTimelineFavorites\(favorites, selectedCameraIds, day\)/);
+  assert.match(timeline, /favoriteTimelineRanges\(favorites, selectedCameraIds, segments, day\)/);
+  assert.match(timeline, /className="timeline-favorite-point"/);
   assert.match(timeline, /fixed-playhead/);
   assert.match(timeline, /onSeek\(target\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);
