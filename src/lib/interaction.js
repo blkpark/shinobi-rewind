@@ -130,6 +130,15 @@ export function filterTimelineFavorites(items, cameraIds, day) {
   });
 }
 
+export function favoriteCountInRange(items, cameraId, start, end) {
+  const from = Date.parse(start), to = Date.parse(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
+  return items.filter((item) => {
+    const point = Date.parse(item.at);
+    return (item.cameraId === null || item.cameraId === cameraId) && point >= from && point < to;
+  }).length;
+}
+
 export function favoriteTimelineRanges(items, cameraIds, segments, day) {
   return filterTimelineFavorites(items, cameraIds, day).flatMap((item) => {
     const point = Date.parse(item.at);

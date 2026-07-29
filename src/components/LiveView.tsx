@@ -47,16 +47,25 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
   const [quality, setQuality] = useState<Quality>("low");
   const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== "hidden");
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const refreshController = useRef<AbortController | null>(null);
 
   const refresh = () => {
+    refreshController.current?.abort();
+    const controller = new AbortController();
+    refreshController.current = controller;
     setFailed(false);
-    void Promise.all([rewindAPI.liveCapabilities(), rewindAPI.liveCameras()]).then(([nextCapability, nextCameras]) => {
-      setCapability(nextCapability);
-      setCameras(nextCameras);
-    }).catch(() => { setFailed(true); setCapability({ available: false, transport: null, lowQuality: false, message: "실시간 스트림 정보를 불러오지 못했습니다." }); });
+    void rewindAPI.liveCapabilities(controller.signal).then(setCapability).catch(() => {
+      if (controller.signal.aborted) return;
+      setFailed(true);
+      setCapability({ available: false, transport: null, lowQuality: false, message: "실시간 스트림 정보를 불러오지 못했습니다." });
+    });
+    void rewindAPI.liveCameras(controller.signal).then(setCameras).catch(() => {
+      if (controller.signal.aborted) return;
+      setFailed(true); setCameras([]);
+    });
   };
 
-  useEffect(refresh, []);
+  useEffect(() => { refresh(); return () => refreshController.current?.abort(); }, []);
   useEffect(() => {
     const update = () => setPageVisible(document.visibilityState !== "hidden");
     document.addEventListener("visibilitychange", update);

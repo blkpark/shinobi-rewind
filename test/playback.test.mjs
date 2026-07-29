@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, favoriteTimelineRanges, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, favoriteCountInRange, favoriteTimelineRanges, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -225,6 +225,18 @@ test("timeline favorites include only global and selected-camera marks on the KS
   ]);
 });
 
+test("recording rows count favorites inside their camera and time range", () => {
+  const favorites = [
+    { id: "global", cameraId: null, at: "2026-07-15T05:00:00Z" },
+    { id: "same-camera", cameraId: "CAM-201", at: "2026-07-15T05:05:00Z" },
+    { id: "other-camera", cameraId: "CAM-202", at: "2026-07-15T05:06:00Z" },
+    { id: "at-end", cameraId: "CAM-201", at: "2026-07-15T05:10:00Z" },
+  ];
+  assert.equal(favoriteCountInRange(favorites, "CAM-201", "2026-07-15T04:55:00Z", "2026-07-15T05:10:00Z"), 2);
+  assert.equal(favoriteCountInRange(favorites, "CAM-202", "2026-07-15T04:55:00Z", "2026-07-15T05:10:00Z"), 2);
+  assert.equal(favoriteCountInRange(favorites, "CAM-201", "bad", "2026-07-15T05:10:00Z"), 0);
+});
+
 test("player and timeline keep bounded recovery, fullscreen, and drag wiring", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const grid = readFileSync(new URL("../src/components/CameraGrid.tsx", import.meta.url), "utf8");
@@ -238,12 +250,16 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /data-segment-id=\{target\.id\}/);
   assert.match(grid, /method: "HEAD"[\s\S]*response\.status === 404[\s\S]*onMediaMissing/);
   assert.match(app, /mediaRecovery\.current[\s\S]*setTimelineRevision/);
+  assert.doesNotMatch(app, /Promise\.allSettled\(selected\.map\(\(camera\) => rewindAPI\.(timeline|events)/);
+  assert.match(app, /setTimelinePending\(\[\.\.\.selected\]\)[\s\S]*selected\.forEach\(\(camera\) => \{[\s\S]*rewindAPI\.timeline\(date, camera, controller\.signal\)/);
+  assert.match(app, /setSegments\(\(items\) => \[\.\.\.items\.filter\(\(item\) => item\.cameraId !== camera\), \.\.\.result\.segments\]\)/);
+  assert.match(app, /응답한 카메라부터 표시합니다/);
   assert.match(grid, /동기화 지연[\s\S]*다시 요청/);
   assert.doesNotMatch(grid, /key=\{`\$\{target\.id\}:\$\{seekRevision\}:\$\{retry\}`\}/);
   assert.match(grid, /if \(retry > 0\) videoRef\.current\?\.load\(\)/);
   assert.match(grid, /removeAttribute\("src"\)[\s\S]*video\.load\(\)/);
   assert.match(grid, /onCanPlay[\s\S]*onError/);
-  assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
+  assert.match(grid, /timelinePending\.includes\(camera\.id\)[\s\S]*timelineFailed\.includes\(camera\.id\)/);
   assert.match(grid, /requestFullscreen/);
   assert.match(grid, /pictureInPictureEnabled/);
   assert.match(grid, /requestPictureInPicture/);
@@ -266,12 +282,20 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(timeline, /timelinePointTime/);
   assert.match(timeline, /favoriteTimelineRanges\(favorites, selectedCameraIds, segments, day\)/);
   assert.match(timeline, /className="timeline-favorite-point"/);
+  assert.match(timeline, /data-favorite-at=\{item\.point\}/);
+  assert.match(timeline, /closest<HTMLElement>\("\[data-favorite-at\]"\)[\s\S]*onSeek\(target\)/);
+  assert.match(app, /const removeFavorite = \(favorite: Favorite\)/);
+  assert.match(app, /className="favorite-remove"/);
+  assert.match(app, /진행 중이거나 검증된 백업은 유지됩니다/);
   assert.match(timeline, /fixed-playhead/);
   assert.match(timeline, /onSeek\(target\)/);
   assert.match(timeline, /event\.stopPropagation\(\)/);
   assert.match(timeline, /end: item\.end \|\| item\.at/);
   assert.match(search, /goMonth\(-1\)[\s\S]*goMonth\(1\)[\s\S]*today/);
   assert.match(search, /value="recorded">\{text\("녹화 있음", "Recorded"\)\}/);
+  assert.match(search, /favoriteCountInRange/);
+  assert.match(search, /className="record-favorite"/);
+  assert.match(app, /const openSearch = \(\) => \{ if \(view !== "search"\) setDate\(kstDateAt\(Date\.now\(\) \/ 1000\)\); setView\("search"\); \}/);
   assert.match(search, /원본 구간[\s\S]*formatKSTRange\(second\(artifact\.start\), second\(artifact\.end\), language\)/);
 });
 
@@ -280,6 +304,9 @@ test("live view isolates camera sessions and keeps state labels honest", () => {
   const live = readFileSync(new URL("../src/components/LiveView.tsx", import.meta.url), "utf8");
   assert.match(app, /view === "live" \? <LiveView/);
   assert.match(live, /visible\.filter\(\(camera\) => statuses\[camera\.id\] === "live"\)/);
+  assert.doesNotMatch(live, /Promise\.all\(\[rewindAPI\.liveCapabilities/);
+  assert.match(live, /rewindAPI\.liveCapabilities\(controller\.signal\)\.then\(setCapability\)/);
+  assert.match(live, /rewindAPI\.liveCameras\(controller\.signal\)\.then\(setCameras\)/);
   assert.match(live, /visibilitychange/);
   assert.match(live, /retryAll/);
   assert.match(live, /aria-label=\{text\("실시간 화질", "Live quality"\)\}/);

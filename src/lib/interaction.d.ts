@@ -23,6 +23,7 @@ export function timelinePointTime(visibleStart: number, clientX: number, trackLe
 export function includeCameraScope(selected: string[], cameraId: string | null, available: string[], max?: number): string[];
 export function shiftMonth(day: string, amount: number): string;
 export function filterTimelineFavorites(items: Favorite[], cameraIds: string[], day: string): Favorite[];
+export function favoriteCountInRange(items: Favorite[], cameraId: string, start: string, end: string): number;
 export function favoriteTimelineRanges(
   items: Favorite[],
   cameraIds: string[],

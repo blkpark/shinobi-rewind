@@ -8,7 +8,7 @@ import { compactPrimaryLayout, focusLayout, segmentAt, videoOffset } from "../li
 import type { Camera, Capability, Segment } from "../lib/types";
 
 type Props = {
-  layout: RecordingLayout; cameras: Camera[]; segments: Segment[]; timelineLoading: boolean; timelineFailed: string[]; master: number; capability: Capability; focused: string[]; pulses: Record<string, number>;
+  layout: RecordingLayout; cameras: Camera[]; segments: Segment[]; timelinePending: string[]; timelineFailed: string[]; master: number; capability: Capability; focused: string[]; pulses: Record<string, number>;
   primaryCamera: string; onPrimary: (camera: string) => void; seekRevision: number;
   primaryRatio: number; onPrimaryRatio: (ratio: number) => void; onPrimarySyncing: (syncing: boolean) => void;
   videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; onReady: (camera: Camera, video: HTMLVideoElement) => void; onMediaMissing: () => void;
@@ -18,7 +18,7 @@ type Props = {
 
 export type RecordingLayout = "grid" | "primary" | "quad" | "single";
 
-export function CameraGrid({ layout: recordingLayout, cameras, segments, timelineLoading, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, seekRevision, videos, onReady, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus }: Props) {
+export function CameraGrid({ layout: recordingLayout, cameras, segments, timelinePending, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, seekRevision, videos, onReady, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus }: Props) {
   const { text } = useLanguage();
   const grid = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -53,7 +53,7 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
   return <div ref={grid} className={`camera-grid ${layout}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
     {visible.map((camera, index) => <CameraTile key={camera.id} {...{
       camera, cameraSegments: segments.filter((item) => item.cameraId === camera.id), master, capability,
-      timelineLoading, timelineFailed: timelineFailed.includes(camera.id),
+      timelineLoading: timelinePending.includes(camera.id), timelineFailed: timelineFailed.includes(camera.id),
       focused: focused.includes(camera.id), pulse: pulses[camera.id] > Date.now(), primary: focused.length > 1 || recordingLayout === "primary" || recordingLayout === "single" ? index === 0 : false,
       seekRevision, videos, onReady, onPrimary, onPrimarySyncing, onMediaMissing,
       audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus,
