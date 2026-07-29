@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -141,6 +141,16 @@ test("favorite archive ranges stay exact, localized, and explicit across KST mid
   assert.equal(formatDuration(900, "ko"), "900초 (15분)");
   assert.equal(formatDuration(900, "en"), "900s (15m)");
   assert.equal(formatKSTRange(start, end, "ko"), "2026-07-15 23:55:00–2026-07-16 00:10:00 · 900초 (15분)");
+});
+
+test("unsupported native playback rates fall back without breaking the 20x master clock", () => {
+  const media = {
+    value: 1,
+    get playbackRate() { return this.value; },
+    set playbackRate(value) { if (value > 8) throw new RangeError("unsupported"); this.value = value; },
+  };
+  assert.equal(setSupportedPlaybackRate(media, 20), 8);
+  assert.equal(media.playbackRate, 8);
 });
 
 test("transport arrows ignore form fields and timeline drag maps one commit target", () => {

@@ -54,6 +54,13 @@ export function formatKSTRange(start, end, language) {
   return `${range} · ${formatDuration(end - start, language)}`;
 }
 
+export function setSupportedPlaybackRate(media, requested) {
+  for (const rate of [...new Set([Math.min(requested, 16), Math.min(requested, 8), Math.min(requested, 4), Math.min(requested, 2), 1])]) {
+    try { media.playbackRate = rate; return rate; } catch { /* Browser-specific media rate limit. */ }
+  }
+  return media.playbackRate;
+}
+
 export function rebaseKSTDate(seconds, day) {
   if (kstDateAt(seconds) === day) return seconds;
   const clock = new Date(seconds * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false });

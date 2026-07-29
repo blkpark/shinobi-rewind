@@ -8,7 +8,7 @@ import { LiveView } from "./components/LiveView";
 import { rewindAPI } from "./lib/api";
 import { cameraTitle, resolveCameraSelection } from "./lib/camera.js";
 import { localizeMessage, useLanguage } from "./lib/i18n";
-import { clampRate, formatKSTRange, includeCameraScope, kstDateAt, maxRate, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
+import { clampRate, formatKSTRange, includeCameraScope, kstDateAt, maxRate, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
 import { applyFocus, canCorrectMedia, driftCorrection, expireFocus, monotonicMaster, segmentAt, simultaneousFocus, videoOffset, type FocusState } from "./lib/playback.js";
 import type { Camera, Capability, Event, Segment, View } from "./lib/types";
 import type { RecordingLayout } from "./components/CameraGrid";
@@ -213,7 +213,7 @@ export function App() {
   }, [autoFocus, capability.motion, events, master, orderedIds]);
 
 	useEffect(() => {
-		Object.entries(videos.current).forEach(([camera, video]) => { video.playbackRate = rate; video.muted = rate > 4 || audibleCamera !== camera; if (effectivePlaying) void video.play().catch(() => undefined); else video.pause(); });
+		Object.entries(videos.current).forEach(([camera, video]) => { setSupportedPlaybackRate(video, rate); video.muted = rate > 4 || audibleCamera !== camera; if (effectivePlaying) void video.play().catch(() => undefined); else video.pause(); });
 	}, [audibleCamera, effectivePlaying, rate]);
 
 	useEffect(() => {
@@ -241,7 +241,7 @@ export function App() {
 	function syncVideo(camera: Camera, video: HTMLVideoElement, masterSeconds = master) {
 		const segment = segmentAt(segments.filter((item) => item.cameraId === camera.id), masterSeconds);
 		if (!segment || video.dataset.segmentId !== segment.id) return;
-		video.playbackRate = rate;
+		setSupportedPlaybackRate(video, rate);
 		if (effectivePlaying) void video.play().catch(() => undefined); else video.pause();
 		if (!canCorrectMedia(segment.id, video.dataset.segmentId, video.seeking, video.readyState)) return;
 		const expected = videoOffset(segment, masterSeconds);

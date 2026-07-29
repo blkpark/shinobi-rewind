@@ -11,6 +11,7 @@ export function parseKSTSecond(day: string, clock: string): number | null;
 export function kstDateAt(seconds: number): string;
 export function formatDuration(seconds: number, language: "ko" | "en"): string;
 export function formatKSTRange(start: number, end: number, language: "ko" | "en"): string;
+export function setSupportedPlaybackRate(media: Pick<HTMLMediaElement, "playbackRate">, requested: number): number;
 export function rebaseKSTDate(seconds: number, day: string): number;
 export function parseFavorites(raw: string | null): Favorite[];
 export function serializeFavorites(items: Favorite[]): string;
