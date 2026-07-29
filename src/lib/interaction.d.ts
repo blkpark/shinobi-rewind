@@ -5,8 +5,12 @@ export function safeStorageSet(storage: StorageLike | null, key: string, value: 
 export function reportDisplayRequest(request: () => Promise<unknown>, success: string, failure: string, report: (message: string) => void): Promise<boolean>;
 export function clampRate(value: unknown): number;
 export function parseRateDraft(value: string): number | null;
+export const minRate: number;
+export const maxRate: number;
 export function parseKSTSecond(day: string, clock: string): number | null;
 export function kstDateAt(seconds: number): string;
+export function formatDuration(seconds: number, language: "ko" | "en"): string;
+export function formatKSTRange(start: number, end: number, language: "ko" | "en"): string;
 export function rebaseKSTDate(seconds: number, day: string): number;
 export function parseFavorites(raw: string | null): Favorite[];
 export function serializeFavorites(items: Favorite[]): string;

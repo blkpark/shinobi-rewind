@@ -1,5 +1,5 @@
 export const minRate = .25;
-export const maxRate = 5;
+export const maxRate = 20;
 
 export function safeStorageGet(storage, key) {
   try { return storage?.getItem(key) ?? null; } catch { return null; }
@@ -38,6 +38,20 @@ export function parseKSTSecond(day, clock) {
 
 export function kstDateAt(seconds) {
   return new Date(seconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
+export function formatDuration(seconds, language) {
+  const value = Math.max(0, Math.round(seconds));
+  if (value < 60) return language === "ko" ? `${value}초` : `${value}s`;
+  const minutes = Math.floor(value / 60);
+  return language === "ko" ? `${value}초 (${minutes}분)` : `${value}s (${minutes}m)`;
+}
+
+export function formatKSTRange(start, end, language) {
+  const clock = (seconds) => new Date(seconds * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul", hour12: false });
+  const startDay = kstDateAt(start), endDay = kstDateAt(end);
+  const range = startDay === endDay ? `${clock(start)}–${clock(end)}` : `${startDay} ${clock(start)}–${endDay} ${clock(end)}`;
+  return `${range} · ${formatDuration(end - start, language)}`;
 }
 
 export function rebaseKSTDate(seconds, day) {

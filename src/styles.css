@@ -81,6 +81,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .workspace > div { display: grid; min-width: 0; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; }
 .camera-grid { position: relative; display: grid; min-height: 0; gap: 8px; }
 .camera-grid.primary-layout { grid-template-columns: minmax(260px, var(--primary-width)) repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.camera-grid.recording-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.camera-grid.recording-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.camera-grid.recording-single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .camera-card { position: relative; display: grid; min-width: 0; min-height: 0; grid-template-rows: 32px minmax(0, 1fr); overflow: hidden; border: 1px solid #29475a; border-radius: 6px; background: #0a1925; }
 .primary-layout .camera-card.primary-camera { grid-column: 1; grid-row: 1 / span 2; }
 .primary-layout .camera-card.supporting-camera:last-of-type { grid-column: span 2; }
@@ -180,6 +183,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .rates { display: flex; gap: 5px; }
 .rates button { min-width: 39px; padding-inline: 6px; }
 .favorite-on { color: #ffd166; border-color: #8a6c28 !important; }
+.favorite-range { position: absolute; bottom: calc(100% + 4px); left: 50%; max-width: min(420px, 70vw); padding: 3px 7px; overflow: hidden; border: 1px solid #5b4920; border-radius: 4px; background: #1d190eeb; color: #ffd166; font-size: 10px; text-overflow: ellipsis; transform: translateX(-50%); white-space: nowrap; }
 .custom-rate { display: flex; align-items: center; gap: 5px; color: #9fb1bd; font-size: 10px; }
 .custom-rate input[type="range"] { width: 85px; }.custom-rate input[type="number"] { width: 57px; padding: 5px; border: 1px solid #27465a; border-radius: 4px; background: #06131d; }.custom-rate output { min-width: 36px; color: #dce9f1; }
 .audio-limit { position: absolute; right: 8px; bottom: 100%; padding: 3px 7px; border-radius: 4px; background: #3b2810; color: #f2b95f; font-size: 10px; }

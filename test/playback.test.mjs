@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
-import { clampRate, dayState, filterTimelineFavorites, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
+import { clampRate, dayState, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
   { id: "b", state: "recorded", start: "2026-07-15T00:10:00+09:00", end: "2026-07-15T00:20:00+09:00" },
@@ -132,7 +132,15 @@ test("audio ownership is exclusive and custom speeds use bounded 0.05 steps", ()
   assert.equal(toggleAudible("CAM-201", "CAM-202", true), "CAM-202");
   assert.equal(toggleAudible("CAM-202", "CAM-201", null), "CAM-202");
   assert.equal(toggleAudible("CAM-202", "CAM-202", true), null);
-  assert.equal(clampRate(.1), .25); assert.equal(clampRate(5.2), 5); assert.equal(clampRate(1.234), 1.25);
+  assert.equal(clampRate(.1), .25); assert.equal(clampRate(5.2), 5.2); assert.equal(clampRate(20.5), 20); assert.equal(clampRate(1.234), 1.25);
+});
+
+test("favorite archive ranges stay exact, localized, and explicit across KST midnight", () => {
+  const start = parseKSTSecond("2026-07-15", "23:55:00");
+  const end = parseKSTSecond("2026-07-16", "00:10:00");
+  assert.equal(formatDuration(900, "ko"), "900초 (15분)");
+  assert.equal(formatDuration(900, "en"), "900s (15m)");
+  assert.equal(formatKSTRange(start, end, "ko"), "2026-07-15 23:55:00–2026-07-16 00:10:00 · 900초 (15분)");
 });
 
 test("transport arrows ignore form fields and timeline drag maps one commit target", () => {
@@ -213,7 +221,8 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(grid, /method: "HEAD"[\s\S]*response\.status === 404[\s\S]*onMediaMissing/);
   assert.match(app, /mediaRecovery\.current[\s\S]*setTimelineRevision/);
   assert.match(grid, /동기화 지연[\s\S]*다시 요청/);
-  assert.match(grid, /key=\{`\$\{target\.id\}:\$\{seekRevision\}:\$\{retry\}`\}/);
+  assert.doesNotMatch(grid, /key=\{`\$\{target\.id\}:\$\{seekRevision\}:\$\{retry\}`\}/);
+  assert.match(grid, /if \(retry > 0\) videoRef\.current\?\.load\(\)/);
   assert.match(grid, /removeAttribute\("src"\)[\s\S]*video\.load\(\)/);
   assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelineLoading[\s\S]*timelineFailed[\s\S]*녹화 목록 확인 불가/);
@@ -226,6 +235,12 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(styles, /\.supporting-camera header \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto; grid-template-rows: 22px 26px/);
   assert.match(grid, /ResizeObserver/);
   assert.match(grid, /compact-primary/);
+  assert.match(grid, /`recording-\$\{recordingLayout\}`/);
+  assert.match(app, /max=\{maxRate\}/);
+  assert.match(app, /\[\.25, \.5, 1, 2, 5, 10, 20\]/);
+  assert.match(app, /TimeJumpControl/);
+  assert.match(app, /favoriteRangeLabel/);
+  assert.match(app, /className="favorite-range"/);
   assert.match(timeline, /role="slider"[\s\S]*onPointerDown=.*onPointerMove=.*onPointerUp=.*onKeyDown=/);
   assert.match(timeline, /setPointerCapture/);
   assert.match(timeline, /querySelector<HTMLElement>\("\.timeline-ranges"\)\?\.getBoundingClientRect\(\)/);
@@ -238,6 +253,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(timeline, /end: item\.end \|\| item\.at/);
   assert.match(search, /goMonth\(-1\)[\s\S]*goMonth\(1\)[\s\S]*today/);
   assert.match(search, /value="recorded">\{text\("녹화 있음", "Recorded"\)\}/);
+  assert.match(search, /원본 구간[\s\S]*formatKSTRange\(second\(artifact\.start\), second\(artifact\.end\), language\)/);
 });
 
 test("live view isolates camera sessions and keeps state labels honest", () => {

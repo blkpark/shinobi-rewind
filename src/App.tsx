@@ -8,11 +8,12 @@ import { LiveView } from "./components/LiveView";
 import { rewindAPI } from "./lib/api";
 import { cameraTitle, resolveCameraSelection } from "./lib/camera.js";
 import { localizeMessage, useLanguage } from "./lib/i18n";
-import { clampRate, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
+import { clampRate, formatKSTRange, includeCameraScope, kstDateAt, maxRate, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, safeStorageGet, safeStorageSet, serializeFavorites, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
 import { applyFocus, canCorrectMedia, driftCorrection, expireFocus, monotonicMaster, segmentAt, simultaneousFocus, videoOffset, type FocusState } from "./lib/playback.js";
 import type { Camera, Capability, Event, Segment, View } from "./lib/types";
+import type { RecordingLayout } from "./components/CameraGrid";
 
-const speeds = [.25, .5, 1, 2, 5];
+const speeds = [.25, .5, 1, 2, 5, 10, 20];
 const layoutKey = "shinobi-rewind:layout:v1";
 const favoritesKey = "shinobi-rewind:favorites:v1";
 const defaultPrimaryRatio = 40;
@@ -26,8 +27,8 @@ const browserStorage = () => { try { return window.localStorage; } catch { retur
 function savedLayout() {
   try {
     const value = JSON.parse(safeStorageGet(browserStorage(), layoutKey) || "null");
-    return value?.version === 1 && typeof value.primaryCamera === "string" && Number.isFinite(value.primaryRatio) && value.primaryRatio >= 25 && value.primaryRatio <= 60
-      ? value as { version: 1; primaryCamera: string; primaryRatio: number }
+    return value?.version === 1 && typeof value.primaryCamera === "string" && Number.isFinite(value.primaryRatio) && value.primaryRatio >= 25 && value.primaryRatio <= 60 && (value.recordingLayout === undefined || ["grid", "primary", "quad", "single"].includes(value.recordingLayout))
+      ? value as { version: 1; primaryCamera: string; primaryRatio: number; recordingLayout?: RecordingLayout }
       : null;
   } catch { return null; }
 }
@@ -68,6 +69,7 @@ export function App() {
   const [pinned, setPinned] = useState<string[] | null>(null);
   const [primaryCamera, setPrimaryCamera] = useState(initial.layout?.primaryCamera || "");
   const [primaryRatio, setPrimaryRatio] = useState(initial.layout?.primaryRatio || defaultPrimaryRatio);
+  const [recordingLayout, setRecordingLayout] = useState<RecordingLayout>(initial.layout?.recordingLayout || "primary");
   const [primarySyncing, setPrimarySyncing] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
   const [timelineRevision, setTimelineRevision] = useState(0);
@@ -116,8 +118,8 @@ export function App() {
 
   useEffect(() => {
     if (!primaryCamera) return;
-    if (!safeStorageSet(browserStorage(), layoutKey, JSON.stringify({ version: 1, primaryCamera, primaryRatio }))) setNotice(text("레이아웃을 브라우저에 저장할 수 없습니다.", "Could not save the layout in this browser."));
-  }, [primaryCamera, primaryRatio]);
+    if (!safeStorageSet(browserStorage(), layoutKey, JSON.stringify({ version: 1, primaryCamera, primaryRatio, recordingLayout }))) setNotice(text("레이아웃을 브라우저에 저장할 수 없습니다.", "Could not save the layout in this browser."));
+  }, [primaryCamera, primaryRatio, recordingLayout]);
 
   useEffect(() => {
     setPinned((old) => {
@@ -270,18 +272,34 @@ export function App() {
   const changeDate = (next: string) => { if (parseKSTSecond(next, "00:00:00") === null) return; setDate(next); seekTo(kstSecond(next, formatTime(master))); };
   const changeClock = (next: string) => { const value = parseKSTSecond(date, next); if (value !== null) seekTo(value); };
   const setCamera = (next: string) => setSelected(next === "all" ? cameras.slice(0, 6).map((camera) => camera.id) : [next]);
+  const favoriteRangeLabel = (cameraId: string | null, atSecond = master) => {
+    const ids = cameraId ? [cameraId] : shownCameras.map((camera) => camera.id);
+    const ranges = ids.map((id) => {
+      const segment = segmentAt(segments.filter((item) => item.cameraId === id), atSecond);
+      if (!segment) return null;
+      return { id, start: Date.parse(segment.start) / 1000, end: Date.parse(segment.end) / 1000 };
+    }).filter((range): range is { id: string; start: number; end: number } => Boolean(range));
+    if (!ranges.length) return timelineLoading ? text("백업 범위 확인 중", "Archive range checking") : text("백업할 녹화 구간 없음", "No recording range to archive");
+    const first = ranges[0];
+    const sameRange = ranges.every((range) => range.start === first.start && range.end === first.end);
+    const range = formatKSTRange(first.start, first.end, language);
+    if (sameRange) return `${text("백업 범위", "Archive range")}: ${range}${ranges.length > 1 ? ` · ${ranges.length}${text("대", " cameras")}` : ""}`;
+    return `${text("백업 범위", "Archive ranges")}: ${ranges.map((item) => `${cameraTitle(cameras, item.id)} ${formatKSTRange(item.start, item.end, language)}`).join(" · ")}`;
+  };
   const pinFocus = () => setPinned((old) => old ? null : focused);
   const toggleFavorite = (cameraId: string | null) => {
-    const at = isoAt(Math.floor(masterRef.current));
+    const atSecond = Math.floor(masterRef.current);
+    const at = isoAt(atSecond);
+    const archiveRange = favoriteRangeLabel(cameraId, atSecond);
     const existing = favorites.find((item) => item.cameraId === cameraId && item.at === at);
     const next = existing ? favorites.filter((item) => item.id !== existing.id) : [...favorites, { id: `${cameraId || "all"}:${at}`, cameraId, at }];
     if (!safeStorageSet(browserStorage(), favoritesKey, serializeFavorites(next))) { setNotice(text("즐겨찾기를 저장할 수 없습니다. 브라우저 저장소 권한과 용량을 확인해 주세요.", "Could not save the favorite. Check browser storage permissions and capacity.")); return; }
     setFavorites(next);
     if (existing) { setNotice(text("즐겨찾기에서 제거했습니다. 이미 검증된 백업은 유지됩니다.", "Removed from favorites. Verified archive copies are retained.")); return; }
     const cameraIds = cameraId ? [cameraId] : selected;
-    setNotice(text("즐겨찾기를 저장하고 백업을 요청했습니다.", "Favorite saved and archive requested."));
+    setNotice(text(`즐겨찾기를 저장했습니다 · ${archiveRange} · 백업 요청`, `Favorite saved · ${archiveRange} · archive requested`));
     void rewindAPI.createArchive({ at, cameraIds }).then((archive) => {
-      setNotice(archive.status === "verified" ? text("즐겨찾기 백업 검증이 완료되었습니다.", "Favorite archive verified.") : text("즐겨찾기 백업 요청을 접수했습니다.", "Favorite archive request accepted."));
+      setNotice(archive.status === "verified" ? text(`즐겨찾기 백업 검증 완료 · ${archiveRange}`, `Favorite archive verified · ${archiveRange}`) : text(`즐겨찾기 백업 요청 접수 · ${archiveRange}`, `Favorite archive request accepted · ${archiveRange}`));
     }).catch(() => setNotice(text("즐겨찾기는 저장했지만 백업을 요청하지 못했습니다. 보조 드라이브 상태를 확인해 주세요.", "Favorite saved, but the archive request failed. Check the secondary drive.")));
   };
   const jumpFavorite = (favorite: Favorite) => {
@@ -310,7 +328,7 @@ export function App() {
 		<div className="language-switch" role="group" aria-label={text("언어", "Language")}><button className={language === "ko" ? "active" : ""} aria-pressed={language === "ko"} onClick={() => setLanguage("ko")}>한국어</button><button className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button></div>
 		{view !== "live" && <button className="ghost" onClick={() => setView("search")}>{text("시간 점프", "Jump to time")}</button>}
     </header>
-    {view === "live" ? <LiveView selected={selected} onRecorded={openRecorded} onNotice={setNotice} /> : view === "search" ? <SearchView date={date} cameras={cameras} selected={selected} segments={segments} events={events} favorites={favorites} capability={capability} eventState={eventState} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, allCameras: cameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, jumpFavorite, audibleCamera: rate > 4 ? null : audibleCamera, setAudio, setNotice, changeDate }} />}
+    {view === "live" ? <LiveView selected={selected} onRecorded={openRecorded} onNotice={setNotice} /> : view === "search" ? <SearchView date={date} cameras={cameras} selected={selected} segments={segments} events={events} favorites={favorites} capability={capability} eventState={eventState} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, allCameras: cameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, recordingLayout, setRecordingLayout, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, jumpFavorite, favoriteRange: favoriteRangeLabel(effectivePrimaryCamera || null), audibleCamera: rate > 4 ? null : audibleCamera, setAudio, setNotice, changeDate, changeClock }} />}
     {notice && <div className="notice" role="status" onAnimationEnd={() => setNotice("")}>{notice}</div>}
   </main>;
 }
@@ -324,19 +342,27 @@ function RateControl({ rate, setRate }: { rate: number; setRate: (value: number)
     if (value === null) { setDraft(rate.toFixed(2)); return; }
     setRate(value); setDraft(value.toFixed(2));
   };
-  return <label className="custom-rate">{text("배속", "Speed")}<input type="range" min="0.25" max="5" step="0.05" value={rate} onChange={(event) => setRate(clampRate(event.target.value))} /><input type="number" min="0.25" max="5" step="0.05" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { setDraft(rate.toFixed(2)); event.currentTarget.blur(); } }} aria-label={text("사용자 지정 재생 속도", "Custom playback speed")} /><output>{rate.toFixed(2)}x</output></label>;
+  return <label className="custom-rate">{text("배속", "Speed")}<input type="range" min="0.25" max={maxRate} step="0.05" value={rate} onChange={(event) => setRate(clampRate(event.target.value))} /><input type="number" min="0.25" max={maxRate} step="0.05" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { setDraft(rate.toFixed(2)); event.currentTarget.blur(); } }} aria-label={text("사용자 지정 재생 속도", "Custom playback speed")} /><output>{rate.toFixed(2)}x</output></label>;
 }
 
-function ControlView(props: { date: string; cameras: Camera[]; allCameras: Camera[]; segments: Segment[]; timelineLoading: boolean; timelineFailed: string[]; events: Event[]; capability: Capability; eventState: string; master: number; seekTo: (value: number | ((value: number) => number)) => void; seekRevision: number; primaryCamera: string; setPrimaryCamera: (value: string) => void; primaryRatio: number; setPrimaryRatio: (value: number) => void; setPrimarySyncing: (value: boolean) => void; rate: number; setRate: (value: number) => void; playing: boolean; setPlaying: (value: boolean | ((value: boolean) => boolean)) => void; autoFocus: boolean; setAutoFocus: (value: boolean) => void; focused: string[]; focus: FocusState; pinned: string[] | null; pinFocus: () => void; videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; syncVideo: (camera: Camera, video: HTMLVideoElement) => void; navigateEvent: (direction: 1 | -1) => void; recoverMediaIndex: () => void; favorites: Favorite[]; toggleFavorite: (camera: string | null) => void; jumpFavorite: (favorite: Favorite) => void; audibleCamera: string | null; setAudio: (camera: string, hasAudio: boolean | null) => void; setNotice: (message: string) => void; changeDate: (day: string) => void }) {
+function TimeJumpControl({ master, onChange }: { master: number; onChange: (value: string) => void }) {
+  const { text } = useLanguage();
+  const [draft, setDraft] = useState(formatTime(master));
+  useEffect(() => setDraft(formatTime(master)), [master]);
+  const commit = () => { if (/^\d{2}:\d{2}:\d{2}$/.test(draft) || /^\d{2}:\d{2}$/.test(draft)) onChange(draft); else setDraft(formatTime(master)); };
+  return <label className="time-jump">{text("시간 이동", "Jump time")}<input type="time" step="1" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { setDraft(formatTime(master)); event.currentTarget.blur(); } }} aria-label={text("재생 시간 이동", "Jump to playback time")} /></label>;
+}
+
+function ControlView(props: { date: string; cameras: Camera[]; allCameras: Camera[]; segments: Segment[]; timelineLoading: boolean; timelineFailed: string[]; events: Event[]; capability: Capability; eventState: string; master: number; seekTo: (value: number | ((value: number) => number)) => void; seekRevision: number; primaryCamera: string; setPrimaryCamera: (value: string) => void; primaryRatio: number; setPrimaryRatio: (value: number) => void; setPrimarySyncing: (value: boolean) => void; recordingLayout: RecordingLayout; setRecordingLayout: (value: RecordingLayout) => void; rate: number; setRate: (value: number) => void; playing: boolean; setPlaying: (value: boolean | ((value: boolean) => boolean)) => void; autoFocus: boolean; setAutoFocus: (value: boolean) => void; focused: string[]; focus: FocusState; pinned: string[] | null; pinFocus: () => void; videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; syncVideo: (camera: Camera, video: HTMLVideoElement) => void; navigateEvent: (direction: 1 | -1) => void; recoverMediaIndex: () => void; favorites: Favorite[]; toggleFavorite: (camera: string | null) => void; jumpFavorite: (favorite: Favorite) => void; favoriteRange: string; audibleCamera: string | null; setAudio: (camera: string, hasAudio: boolean | null) => void; setNotice: (message: string) => void; changeDate: (day: string) => void; changeClock: (value: string) => void }) {
   const { language, text } = useLanguage();
-  const { date, cameras, allCameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, jumpFavorite, audibleCamera, setAudio, setNotice, changeDate } = props;
+  const { date, cameras, allCameras, segments, timelineLoading, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, recordingLayout, setRecordingLayout, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, jumpFavorite, favoriteRange, audibleCamera, setAudio, setNotice, changeDate, changeClock } = props;
   const motionEnabled = capability.motion === "available";
   const favoriteAt = (camera: string | null) => favorites.some((item) => item.cameraId === camera && Math.floor(Date.parse(item.at) / 1000) === Math.floor(master));
-  return <div className="control-view"><section className="controls"><span className="control-summary">{language === "ko" ? `선택 카메라 ${cameras.length}대 · ${focused.length ? `${focused.length}개 자동 포커스` : "전체 보기"}` : `${cameras.length} selected · ${focused.length ? `${focused.length} auto-focused` : "All cameras"}`}</span>
+  return <div className="control-view"><section className="controls"><span className="control-summary">{language === "ko" ? `선택 카메라 ${cameras.length}대 · ${focused.length ? `${focused.length}개 자동 포커스` : "전체 보기"}` : `${cameras.length} selected · ${focused.length ? `${focused.length} auto-focused` : "All cameras"}`}</span><div className="layout-presets" aria-label={text("녹화 레이아웃", "Recording layout")}>{([['grid', '3×2', '3×2'], ['primary', '주+5', 'Primary + 5'], ['quad', '2×2', '2×2'], ['single', '1대', 'Single']] as const).map(([value, ko, en]) => <button type="button" className={recordingLayout === value ? "active" : ""} aria-pressed={recordingLayout === value} onClick={() => setRecordingLayout(value)} key={value}>{text(ko, en)}</button>)}</div><TimeJumpControl master={master} onChange={changeClock} /><button className="ghost" type="button" onClick={() => setPlaying((value) => !value)}>{playing ? text("전체 일시정지", "Pause all") : text("전체 재생", "Play all")}</button>
     <div className="toggle-wrap"><span>{text("모션 자동 포커스", "Motion auto-focus")} <Info aria-hidden="true" /></span><button type="button" className={`toggle ${autoFocus && motionEnabled ? "on" : ""}`} role="switch" aria-checked={autoFocus && motionEnabled} aria-label={text("모션 자동 포커스", "Motion auto-focus")} disabled={!motionEnabled} onClick={() => setAutoFocus(!autoFocus)}><span /></button></div>
     <span className={`motion-status ${capability.motion}`}>{localizeMessage(capability.message, language)}{eventState === "partial" ? text(" · 일부 카메라 이벤트를 불러오지 못했습니다", " · Some camera events could not be loaded") : eventState === "error" ? text(" · 이벤트 요청 오류", " · Event request failed") : ""}</span><button className="ghost" onClick={pinFocus} disabled={!focused.length}>{pinned ? text("포커스 고정 해제", "Unpin focus") : text("포커스 고정", "Pin focus")}</button><button className="ghost" onClick={() => setPrimaryRatio(defaultPrimaryRatio)}>{text("크기 초기화", "Reset size")}</button><details className="favorites-menu"><summary>★ {text("즐겨찾기", "Favorites")} {favorites.length}</summary><div>{favorites.length ? favorites.map((favorite) => <button onClick={() => jumpFavorite(favorite)} key={favorite.id}><Star weight="fill" /><span>{favorite.cameraId ? cameraTitle(allCameras, favorite.cameraId) : text("전체 카메라", "All cameras")}<small>{new Date(favorite.at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { timeZone: "Asia/Seoul", hour12: false })} KST</small></span></button>) : <p>{text("저장된 시간이 없습니다.", "No saved times.")}</p>}</div></details></section>
-	  <section className={`workspace ${capability.motion === "available" ? "" : "events-off"}`}><div><CameraGrid cameras={cameras} segments={segments} timelineLoading={timelineLoading} timelineFailed={timelineFailed} master={master} capability={capability} focused={focused} pulses={focus.pulseUntil} primaryCamera={primaryCamera} onPrimary={setPrimaryCamera} primaryRatio={primaryRatio} onPrimaryRatio={setPrimaryRatio} onPrimarySyncing={setPrimarySyncing} seekRevision={seekRevision} videos={videos} onReady={syncVideo} onMediaMissing={recoverMediaIndex} audibleCamera={audibleCamera} onAudible={setAudio} onFavorite={toggleFavorite} isFavorite={favoriteAt} onPiPStatus={setNotice} /><Timeline day={date} segments={segments} events={events} favorites={favorites} selectedCameraIds={cameras.map((camera) => camera.id)} master={master} onSeek={seekTo} onDay={changeDate} /></div><EventRail cameras={cameras} capability={capability} events={events} eventState={eventState} onOpen={(event) => seekTo(Date.parse(event.at) / 1000)} /></section>
-    <footer className="transport"><button onClick={() => navigateEvent(-1)} aria-label={text("이전 이벤트", "Previous event")}><SkipBack aria-hidden="true" />{text("이전 모션", "Previous motion")}</button><button onClick={() => seekTo((value) => value - 5)}>-5{text("초", "s")}</button><button className="play" onClick={() => setPlaying((value) => !value)} aria-label={playing ? text("일시 정지", "Pause") : text("재생", "Play")}>{playing ? <Pause weight="fill" /> : <Play weight="fill" />}</button><button onClick={() => seekTo((value) => value + 5)}>+5{text("초", "s")}</button><button className={favoriteAt(primaryCamera) ? "favorite-on" : ""} onClick={() => toggleFavorite(primaryCamera || null)}><Star weight={favoriteAt(primaryCamera) ? "fill" : "regular"} />{text("현재 시각", "Current time")}</button><div className="rates" aria-label={text("재생 속도", "Playback speed")}>{speeds.map((speed) => <button className={rate === speed ? "active" : ""} onClick={() => setRate(speed)} key={speed}>x{speed}</button>)}</div><RateControl rate={rate} setRate={setRate} /><button onClick={() => navigateEvent(1)} aria-label={text("다음 이벤트", "Next event")}>{text("다음 모션", "Next motion")}<SkipForward aria-hidden="true" /></button>{rate > 4 && <span className="audio-limit">{text("4x 초과 · 브라우저 음성 자동 제한", "Above 4x · browser audio is automatically limited")}</span>}</footer>
+	  <section className={`workspace ${capability.motion === "available" ? "" : "events-off"}`}><div><CameraGrid layout={recordingLayout} cameras={cameras} segments={segments} timelineLoading={timelineLoading} timelineFailed={timelineFailed} master={master} capability={capability} focused={focused} pulses={focus.pulseUntil} primaryCamera={primaryCamera} onPrimary={setPrimaryCamera} primaryRatio={primaryRatio} onPrimaryRatio={setPrimaryRatio} onPrimarySyncing={setPrimarySyncing} seekRevision={seekRevision} videos={videos} onReady={syncVideo} onMediaMissing={recoverMediaIndex} audibleCamera={audibleCamera} onAudible={setAudio} onFavorite={toggleFavorite} isFavorite={favoriteAt} onPiPStatus={setNotice} /><Timeline day={date} segments={segments} events={events} favorites={favorites} selectedCameraIds={cameras.map((camera) => camera.id)} master={master} onSeek={seekTo} onDay={changeDate} /></div><EventRail cameras={cameras} capability={capability} events={events} eventState={eventState} onOpen={(event) => seekTo(Date.parse(event.at) / 1000)} /></section>
+    <footer className="transport"><button onClick={() => navigateEvent(-1)} aria-label={text("이전 이벤트", "Previous event")}><SkipBack aria-hidden="true" />{text("이전 모션", "Previous motion")}</button><button onClick={() => seekTo((value) => value - 5)}>-5{text("초", "s")}</button><button className="play" onClick={() => setPlaying((value) => !value)} aria-label={playing ? text("일시 정지", "Pause") : text("재생", "Play")}>{playing ? <Pause weight="fill" /> : <Play weight="fill" />}</button><button onClick={() => seekTo((value) => value + 5)}>+5{text("초", "s")}</button><button className={favoriteAt(primaryCamera) ? "favorite-on" : ""} onClick={() => toggleFavorite(primaryCamera || null)} title={favoriteRange}><Star weight={favoriteAt(primaryCamera) ? "fill" : "regular"} />{text("현재 시각", "Current time")}</button><span className="favorite-range" role="status">{favoriteRange}</span><div className="rates" aria-label={text("재생 속도", "Playback speed")}>{speeds.map((speed) => <button className={rate === speed ? "active" : ""} onClick={() => setRate(speed)} key={speed}>x{speed}</button>)}</div><RateControl rate={rate} setRate={setRate} /><button onClick={() => navigateEvent(1)} aria-label={text("다음 이벤트", "Next event")}>{text("다음 모션", "Next motion")}<SkipForward aria-hidden="true" /></button>{rate > 4 && <span className="audio-limit">{text("4x 초과 · 브라우저 음성 자동 제한", "Above 4x · browser audio is automatically limited")}</span>}</footer>
   </div>;
 }
 

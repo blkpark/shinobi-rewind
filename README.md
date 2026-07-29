@@ -36,7 +36,7 @@ Set `ARCHIVE_ROOT` to a dedicated writable directory to enable favorite preserva
 
 Timeline segments expose `hasAudio` as `true`, `false`, or `null`. Only explicit Shinobi video metadata becomes true/false; missing or ambiguous metadata stays null rather than being guessed. The browser keeps at most one audible camera and mutes audio above 4x.
 
-The control view keeps one active video per camera, supports native PiP with fullscreen fallback, 0.25x–5x custom speed, fixed-playhead drag/zoom, ±5 second arrow-key jumps, and absolute-KST local favorites. Incident search drills from month to week to day and keeps detector-off, zero-event, no-data, and partial failures distinct.
+The control view keeps one active video per camera, supports native PiP with fullscreen fallback, 0.25x–20x custom speed, fixed-playhead drag/zoom, direct time jumps, ±5 second arrow-key jumps, and absolute-KST local favorites. Incident search drills from month to week to day and keeps detector-off, zero-event, no-data, and partial failures distinct.
 
 ## Checks
 
