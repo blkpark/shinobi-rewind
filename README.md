@@ -2,6 +2,10 @@
 
 An unofficial, self-hosted companion for finding Shinobi recordings by exact time, reviewing up to six cameras on one shared timeline, and preserving explicitly favorited segments on a separate archive drive.
 
+![Shinobi Rewind recorded review with six synthetic camera feeds](docs/assets/shinobi-rewind-demo.jpg)
+
+_Synthetic demo only. No real CCTV footage, site details, private addresses, or operator data are shown._
+
 The operator UI supports Korean and English. The language switch in the top bar is saved in browser storage; first-time visitors use their browser language, with English as the fallback.
 
 ## Run
