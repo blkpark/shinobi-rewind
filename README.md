@@ -23,7 +23,7 @@ The included Compose example joins an existing `cctv` Docker network and binds t
 Release tags publish a multi-stage Docker image to `ghcr.io/blkpark/shinobi-rewind`. Pin a released version in production instead of a floating tag:
 
 ```sh
-docker pull ghcr.io/blkpark/shinobi-rewind:v0.5.0
+docker pull ghcr.io/blkpark/shinobi-rewind:v0.5.1
 ```
 
 The image contains this project's license and [third-party notices](THIRD_PARTY_NOTICES.md). It still requires a local `.env`, a trusted network, and an existing Shinobi deployment.

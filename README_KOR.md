@@ -23,7 +23,7 @@ _합성 데모일 뿐입니다. 실제 CCTV 영상, 현장 정보, 개인 주소
 릴리스 태그는 multi-stage Docker 이미지를 `ghcr.io/blkpark/shinobi-rewind`에 게시합니다. 프로덕션에서는 floating tag 대신 릴리스된 버전을 고정해서 사용하세요.
 
 ```sh
-docker pull ghcr.io/blkpark/shinobi-rewind:v0.5.0
+docker pull ghcr.io/blkpark/shinobi-rewind:v0.5.1
 ```
 
 이미지에는 이 프로젝트의 라이선스와 [서드파티 고지](THIRD_PARTY_NOTICES.md)가 포함되어 있습니다. 그래도 로컬 `.env`, 신뢰할 수 있는 네트워크, 기존 Shinobi 배포는 필요합니다.
