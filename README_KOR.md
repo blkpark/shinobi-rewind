@@ -1,5 +1,7 @@
 # Shinobi Rewind
 
+[English](README.md) | [한국어](README_KOR.md)
+
 정확한 시간으로 Shinobi 녹화 영상을 찾고, 최대 6대의 카메라를 하나의 공유 타임라인에서 검토하며, 명시적으로 즐겨찾기한 구간을 별도의 아카이브 드라이브에 보존할 수 있게 해 주는 비공식 셀프 호스팅 companion입니다.
 
 ![6개의 합성 카메라 피드로 구성된 Shinobi Rewind 녹화 검토 화면](docs/assets/shinobi-rewind-demo.jpg)
@@ -21,7 +23,7 @@ _합성 데모일 뿐입니다. 실제 CCTV 영상, 현장 정보, 개인 주소
 릴리스 태그는 multi-stage Docker 이미지를 `ghcr.io/blkpark/shinobi-rewind`에 게시합니다. 프로덕션에서는 floating tag 대신 릴리스된 버전을 고정해서 사용하세요.
 
 ```sh
-docker pull ghcr.io/blkpark/shinobi-rewind:v0.4.0
+docker pull ghcr.io/blkpark/shinobi-rewind:v0.5.0
 ```
 
 이미지에는 이 프로젝트의 라이선스와 [서드파티 고지](THIRD_PARTY_NOTICES.md)가 포함되어 있습니다. 그래도 로컬 `.env`, 신뢰할 수 있는 네트워크, 기존 Shinobi 배포는 필요합니다.
@@ -48,7 +50,7 @@ Shinobi Rewind는 신뢰할 수 있는 LAN 또는 인증된 VPN/reverse proxy �
 
 ## 오픈소스 상태
 
-소스는 MIT 라이선스이며, 인증 정보가 없는 데모 모드를 포함합니다. 셀프 호스팅 평가와 신뢰할 수 있는 네트워크 사용에 적합하지만, `0.4.x` 버전은 beta로 간주해야 합니다. 배포 시에는 자체 인증 경계, Shinobi 인스턴스, 아카이브 저장소, 선택적 RTSP-to-HLS bridge를 직접 제공해야 합니다.
+소스는 MIT 라이선스이며, 인증 정보가 없는 데모 모드를 포함합니다. 셀프 호스팅 평가와 신뢰할 수 있는 네트워크 사용에 적합하지만, `0.5.x` 버전은 beta로 간주해야 합니다. 배포 시에는 자체 인증 경계, Shinobi 인스턴스, 아카이브 저장소, 선택적 RTSP-to-HLS bridge를 직접 제공해야 합니다.
 
 Shinobi Rewind는 Shinobi Systems와 제휴되어 있지 않으며, Shinobi Systems의 보증이나 지원을 받지 않습니다. Shinobi 소스 코드를 포함하지 않습니다. 운영자는 자신의 설치에 적용되는 [Shinobi 라이선스](https://gitlab.com/Shinobi-Systems/Shinobi/-/blob/master/LICENSE.md)와 카메라 벤더 약관을 준수할 책임이 있습니다.
 

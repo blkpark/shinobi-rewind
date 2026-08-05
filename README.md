@@ -1,5 +1,7 @@
 # Shinobi Rewind
 
+[English](README.md) | [한국어](README_KOR.md)
+
 An unofficial, self-hosted companion for finding Shinobi recordings by exact time, reviewing up to six cameras on one shared timeline, and preserving explicitly favorited segments on a separate archive drive.
 
 ![Shinobi Rewind recorded review with six synthetic camera feeds](docs/assets/shinobi-rewind-demo.jpg)
@@ -21,7 +23,7 @@ The included Compose example joins an existing `cctv` Docker network and binds t
 Release tags publish a multi-stage Docker image to `ghcr.io/blkpark/shinobi-rewind`. Pin a released version in production instead of a floating tag:
 
 ```sh
-docker pull ghcr.io/blkpark/shinobi-rewind:v0.4.0
+docker pull ghcr.io/blkpark/shinobi-rewind:v0.5.0
 ```
 
 The image contains this project's license and [third-party notices](THIRD_PARTY_NOTICES.md). It still requires a local `.env`, a trusted network, and an existing Shinobi deployment.
@@ -48,7 +50,7 @@ Run `make fmt test lint typecheck build`. The frontend uses only React/Vite/Type
 
 ## Open-source status
 
-The source is MIT licensed and contains a credential-free demo mode. It is suitable for self-hosted evaluation and trusted-network use, but version `0.4.x` should be treated as beta: deployments must supply their own authentication boundary, Shinobi instance, archive storage, and optional RTSP-to-HLS bridge.
+The source is MIT licensed and contains a credential-free demo mode. It is suitable for self-hosted evaluation and trusted-network use, but version `0.5.x` should be treated as beta: deployments must supply their own authentication boundary, Shinobi instance, archive storage, and optional RTSP-to-HLS bridge.
 
 Shinobi Rewind is not affiliated with, endorsed by, or supported by Shinobi Systems. It does not include Shinobi source code. Operators remain responsible for complying with the [Shinobi license](https://gitlab.com/Shinobi-Systems/Shinobi/-/blob/master/LICENSE.md) and any camera-vendor terms that apply to their own installation.
 
