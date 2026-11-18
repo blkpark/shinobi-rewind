@@ -30,6 +30,22 @@ export function nextSegment(segments, masterSeconds) {
     .sort((a, b) => toSeconds(a.start) - toSeconds(b.start) || a.id.localeCompare(b.id))[0];
 }
 
+export function supportsRecordingPreload(protocol) {
+  return protocol === "h2" || protocol === "h3";
+}
+
+export function recordingToPreload(segments, current, masterSeconds, rate) {
+  const boundary = toSeconds(current.end);
+  if (!(masterSeconds < boundary && boundary - masterSeconds <= 8 * rate)) return undefined;
+  const next = nextSegment(segments, boundary);
+  return next && toSeconds(next.start) === boundary ? next : undefined;
+}
+
+export function crossedRecordingBoundary(segment, previousMaster, master, previousSeek, seek) {
+  const start = toSeconds(segment.start);
+  return seek === previousSeek && previousMaster < start && start <= master;
+}
+
 export function simultaneousFocus(events, atSeconds, orderedIds, previousSeconds) {
   const active = new Set(events.filter((event) => {
     const start = toSeconds(event.at);

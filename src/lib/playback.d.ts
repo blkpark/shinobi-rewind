@@ -6,6 +6,9 @@ export function driftCorrection(current: number, expected: number, tolerance?: n
 export function canCorrectMedia(targetSegmentId: string, mediaSegmentId: string | undefined, seeking: boolean, readyState: number): boolean;
 export function monotonicMaster(anchorMaster: number, anchorWall: number, rate: number, now: number): number;
 export function nextSegment(segments: PlaybackSegment[], masterSeconds: number): PlaybackSegment | undefined;
+export function supportsRecordingPreload(protocol: string | undefined): boolean;
+export function recordingToPreload<T extends PlaybackSegment>(segments: T[], current: T, masterSeconds: number, rate: number): T | undefined;
+export function crossedRecordingBoundary(segment: PlaybackSegment, previousMaster: number, master: number, previousSeek: number, seek: number): boolean;
 export function simultaneousFocus(events: { cameraId: string; at: string; end?: string }[], atSeconds: number, orderedIds: string[], previousSeconds?: number): string[];
 export function applyFocus(state: FocusState, ids: string[], now: number, hold?: number): FocusState;
 export function expireFocus(state: FocusState, now: number): FocusState;

@@ -1,15 +1,15 @@
 import { ArrowsIn, ArrowsOut, Camera as CameraIcon, PictureInPicture, SpeakerHigh, SpeakerSlash, Star, VideoCameraSlash } from "@phosphor-icons/react";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cameraLabel, cameraLimit } from "../lib/camera.js";
 import { useLanguage } from "../lib/i18n";
 import { pipMode, reportDisplayRequest } from "../lib/interaction.js";
-import { compactPrimaryLayout, focusLayout, segmentAt, videoOffset } from "../lib/playback.js";
+import { compactPrimaryLayout, crossedRecordingBoundary, focusLayout, recordingToPreload, segmentAt, supportsRecordingPreload, videoOffset } from "../lib/playback.js";
 import type { Camera, Capability, Segment } from "../lib/types";
 
 type Props = {
   layout: RecordingLayout; cameras: Camera[]; segments: Segment[]; timelinePending: string[]; timelineFailed: string[]; master: number; capability: Capability; focused: string[]; pulses: Record<string, number>;
-  primaryCamera: string; onPrimary: (camera: string) => void; seekRevision: number;
+  primaryCamera: string; onPrimary: (camera: string) => void; seekRevision: number; playing: boolean; rate: number;
   primaryRatio: number; onPrimaryRatio: (ratio: number) => void; onPrimarySyncing: (syncing: boolean) => void; layoutSyncing: boolean; onLayoutSynced: () => void;
   videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; onReady: (camera: Camera, video: HTMLVideoElement) => void; onMediaMissing: () => void;
   audibleCamera: string | null; onAudible: (camera: string, hasAudio: boolean | null) => void;
@@ -19,8 +19,12 @@ type Props = {
 
 export type RecordingLayout = "grid" | "primary" | "quad" | "single";
 
-export function CameraGrid({ layout: recordingLayout, cameras, segments, timelinePending, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, layoutSyncing, onLayoutSynced, seekRevision, videos, onReady, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenCamera, onFullscreen }: Props) {
+export function CameraGrid({ layout: recordingLayout, cameras, segments, timelinePending, timelineFailed, master, capability, focused, pulses, primaryCamera, onPrimary, primaryRatio, onPrimaryRatio, onPrimarySyncing, layoutSyncing, onLayoutSynced, seekRevision, playing, rate, videos, onReady, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenCamera, onFullscreen }: Props) {
   const { text } = useLanguage();
+  const [canPreload] = useState(() => {
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    return supportsRecordingPreload(navigation?.nextHopProtocol);
+  });
   const grid = useRef<HTMLDivElement | null>(null);
   const [resizing, setResizing] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -65,7 +69,7 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
     if (!pending) onLayoutSynced();
   }, [capability.demo, layoutSyncing, master, onLayoutSynced, readySegments, segments, timelineFailed, timelinePending, visible]);
   const handleReady = (camera: Camera, video: HTMLVideoElement) => {
-    if (video.dataset.segmentId) setReadySegments((current) => ({ ...current, [camera.id]: video.dataset.segmentId! }));
+    if (video.dataset.segmentId) setReadySegments((current) => current[camera.id] === video.dataset.segmentId ? current : ({ ...current, [camera.id]: video.dataset.segmentId! }));
     onReady(camera, video);
   };
   return <div ref={grid} className={`camera-grid ${layout}${seven ? " seven-cameras" : ""}${focused.length === 3 ? " focus-three" : ""}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
@@ -73,7 +77,7 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
       camera, multiCameraPlayback: cameras.length === cameraLimit, cameraSegments: segments.filter((item) => item.cameraId === camera.id), master, capability,
       timelineLoading: timelinePending.includes(camera.id), timelineFailed: timelineFailed.includes(camera.id),
       focused: focused.includes(camera.id), pulse: pulses[camera.id] > Date.now(), primary: fullscreenCamera ? index === 0 : focused.length > 1 || recordingLayout === "primary" || recordingLayout === "single" ? index === 0 : false,
-      seekRevision, videos, onReady: handleReady, onPrimary, onPrimarySyncing, onMediaMissing,
+      clockOwner: index === 0, seekRevision, playing, rate, canPreload, videos, onReady: handleReady, onPrimary, onPrimarySyncing, onMediaMissing,
       audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenActive: fullscreenCamera === camera.id, onFullscreen,
     }} />)}
     {layout === "primary-layout" && visible.length > 1 && <div className={`layout-resizer ${resizing ? "resizing" : ""}`} role="separator" aria-label={text("주 화면 크기 조절", "Resize primary view")} aria-orientation="vertical" aria-valuemin={25} aria-valuemax={60} aria-valuenow={Math.round(primaryRatio)} tabIndex={0} title={text("드래그하여 주 화면 크기 조절 · 자동 저장", "Drag to resize primary view · saved automatically")} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); resize(event.clientX); }} onPointerMove={(event) => { if (resizing) resize(event.clientX); }} onPointerUp={(event) => { resize(event.clientX); setResizing(false); }} onPointerCancel={() => setResizing(false)} onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); onPrimaryRatio(Math.max(25, Math.min(60, primaryRatio + (event.key === "ArrowLeft" ? -2 : 2)))); } }}><span /></div>}
@@ -81,8 +85,8 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
   </div>;
 }
 
-function CameraTile({ camera, multiCameraPlayback, cameraSegments, timelineLoading, timelineFailed, master, capability, focused, pulse, primary, seekRevision, videos, onReady, onPrimary, onPrimarySyncing, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenActive, onFullscreen }: {
-  camera: Camera; multiCameraPlayback: boolean; cameraSegments: Segment[]; timelineLoading: boolean; timelineFailed: boolean; master: number; capability: Capability; focused: boolean; pulse: boolean; primary: boolean; seekRevision: number;
+function CameraTile({ camera, multiCameraPlayback, cameraSegments, timelineLoading, timelineFailed, master, capability, focused, pulse, primary, clockOwner, seekRevision, playing, rate, canPreload, videos, onReady, onPrimary, onPrimarySyncing, onMediaMissing, audibleCamera, onAudible, onFavorite, isFavorite, onPiPStatus, fullscreenActive, onFullscreen }: {
+  camera: Camera; multiCameraPlayback: boolean; cameraSegments: Segment[]; timelineLoading: boolean; timelineFailed: boolean; master: number; capability: Capability; focused: boolean; pulse: boolean; primary: boolean; clockOwner: boolean; seekRevision: number; playing: boolean; rate: number; canPreload: boolean;
   videos: React.MutableRefObject<Record<string, HTMLVideoElement>>; onReady: (camera: Camera, video: HTMLVideoElement) => void; onPrimary: (camera: string) => void;
   onPrimarySyncing: (syncing: boolean) => void; onMediaMissing: () => void;
   audibleCamera: string | null; onAudible: (camera: string, hasAudio: boolean | null) => void;
@@ -91,34 +95,75 @@ function CameraTile({ camera, multiCameraPlayback, cameraSegments, timelineLoadi
 }) {
   const { language, text } = useLanguage();
   const target = segmentAt(cameraSegments, master) as Segment | undefined;
-  const [readyID, setReadyID] = useState<string | null>(null);
+  const [ready, setReady] = useState<{ id: string; seek: number } | null>(null);
   const [failed, setFailed] = useState(false);
-  const [retry, setRetry] = useState(0);
+  const [retry, setRetry] = useState<{ id: string; count: number } | null>(null);
   const [delayed, setDelayed] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [pip, setPiP] = useState<{ key: string; segmentId: string; open: boolean } | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const previous = useRef({ master, seekRevision, id: target?.id, rollover: false });
   const label = cameraLabel(camera);
-  const waiting = Boolean(target && readyID !== target.id);
+  const waiting = Boolean(target && (ready?.id !== target.id || ready.seek !== seekRevision));
   const hasAudio = target?.hasAudio ?? null;
+  const activeKey = pip && (pip.open || pip.segmentId === target?.id) ? pip.key : canPreload ? target?.id : "current";
+  const upcoming = target && canPreload && playing && !waiting && !failed && !pip?.open
+    ? recordingToPreload(cameraSegments, target, master, rate)
+    : undefined;
+  const activeVideo = () => frameRef.current?.querySelector<HTMLVideoElement>("video.active");
 
-  useEffect(() => {
-    setReadyID(null);
+  useLayoutEffect(() => {
+    const last = previous.current;
+    const rollover = Boolean(target && last.seekRevision === seekRevision &&
+      (last.id === target.id ? last.rollover : crossedRecordingBoundary(target, last.master, master, last.seekRevision, seekRevision)));
+    previous.current = { master, seekRevision, id: target?.id, rollover };
+    if (clockOwner) onPrimarySyncing(!failed && (timelineLoading || (waiting && !rollover)));
+  }, [clockOwner, failed, master, onPrimarySyncing, seekRevision, target, timelineLoading, waiting]);
+
+  useLayoutEffect(() => {
+    if (clockOwner) return () => onPrimarySyncing(false);
+  }, [clockOwner, onPrimarySyncing]);
+
+  const activate = (video: HTMLVideoElement) => {
+    if (!target || activeVideo() !== video || video.dataset.segmentId !== target.id || video.seeking ||
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    const expected = videoOffset(target, master);
+    if (!previous.current.rollover && Math.abs(video.currentTime - expected) > .25) {
+      video.currentTime = expected;
+      return;
+    }
     setFailed(false);
     setDelayed(false);
-    if (videoRef.current) videos.current[camera.id] = videoRef.current;
-    if (retry > 0) videoRef.current?.load();
-  }, [camera.id, target?.id, retry, videos]);
+    setReady((current) => current?.id === target.id && current.seek === seekRevision ? current : { id: target.id, seek: seekRevision });
+    videos.current[camera.id] = video;
+    onReady(camera, video);
+  };
 
-  useEffect(() => () => {
-    const video = videoRef.current;
-    if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
-    if (videos.current[camera.id] === video) delete videos.current[camera.id];
-  }, [camera.id, videos]);
-
-  useEffect(() => {
-    if (!primary) return;
-    onPrimarySyncing(Boolean(timelineLoading || (target && waiting)));
-    return () => onPrimarySyncing(false);
-  }, [primary, timelineLoading, target?.id, waiting, seekRevision, onPrimarySyncing]);
+  useLayoutEffect(() => {
+    setReady(null);
+    setFailed(false);
+    setDelayed(false);
+    const video = activeVideo();
+    if (!video) {
+      setPiP(null);
+      return;
+    }
+    if (video.error) {
+      video.load();
+    } else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      const expected = videoOffset(target, master);
+      if (Math.abs(video.currentTime - expected) > .25) video.currentTime = expected;
+      else activate(video);
+    }
+    const enterPiP = () => { if (target && activeKey) setPiP({ key: activeKey, segmentId: target.id, open: true }); };
+    const leavePiP = () => { if (target && activeKey) setPiP({ key: activeKey, segmentId: target.id, open: false }); };
+    video.addEventListener("enterpictureinpicture", enterPiP);
+    video.addEventListener("leavepictureinpicture", leavePiP);
+    return () => {
+      video.removeEventListener("enterpictureinpicture", enterPiP);
+      video.removeEventListener("leavepictureinpicture", leavePiP);
+      if (videos.current[camera.id] === video) delete videos.current[camera.id];
+    };
+  }, [activeKey, camera.id, target?.id, retry, seekRevision, timelineLoading, timelineFailed, videos]);
 
   useEffect(() => {
     if (!target || !waiting || failed) return;
@@ -126,27 +171,17 @@ function CameraTile({ camera, multiCameraPlayback, cameraSegments, timelineLoadi
     return () => window.clearTimeout(timer);
   }, [failed, target?.id, waiting]);
 
-  const activate = (video: HTMLVideoElement) => {
-    if (!target || videoRef.current !== video || video.dataset.segmentId !== target.id || video.seeking) return;
-    const expected = videoOffset(target, master);
-    if (Math.abs(video.currentTime - expected) > .25) { video.currentTime = expected; return; }
-    setFailed(false);
-    setDelayed(false);
-    setReadyID(target.id);
-    videos.current[camera.id] = video;
-    onReady(camera, video);
-  };
   const retryVideo = () => {
     delete videos.current[camera.id];
     setFailed(false);
     setDelayed(false);
-    setReadyID(null);
-    setRetry((value) => value + 1);
+    setReady(null);
+    if (target) setRetry((value) => ({ id: target.id, count: value?.id === target.id ? value.count + 1 : 1 }));
   };
   const mediaError = (video: HTMLVideoElement) => {
-    if (!target || videoRef.current !== video || video.dataset.segmentId !== target.id) return;
+    if (!target || activeVideo() !== video || video.dataset.segmentId !== target.id) return;
     delete videos.current[camera.id];
-    setReadyID(null);
+    setReady(null);
     setFailed(true);
     void fetch(`/api/v1/videos/${target.id}`, { method: "HEAD", cache: "no-store" })
       .then((response) => { if (response.status === 404) onMediaMissing(); })
@@ -158,7 +193,7 @@ function CameraTile({ camera, multiCameraPlayback, cameraSegments, timelineLoadi
   };
   const pictureInPicture = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    const video = videoRef.current;
+    const video = activeVideo();
     const mode = pipMode(Boolean(video && target), Boolean(document.pictureInPictureEnabled && typeof video?.requestPictureInPicture === "function"));
     if (mode === "unavailable" || !video || !target) { onPiPStatus(text("재생 가능한 녹화가 없어 PiP를 열 수 없습니다.", "PiP requires a playable recording.")); return; }
     if (mode === "fullscreen") {
@@ -178,10 +213,47 @@ function CameraTile({ camera, multiCameraPlayback, cameraSegments, timelineLoadi
       <button className={`camera-action ${audibleCamera === camera.id ? "audible" : ""}`} type="button" disabled={hasAudio !== true} onClick={(event) => { event.stopPropagation(); onAudible(camera.id, hasAudio); }} aria-label={hasAudio === true ? `${label.title} ${audibleCamera === camera.id ? text("소리 끄기", "mute") : text("소리 듣기", "listen")}` : hasAudio === false ? `${label.title} ${text("음성 없음", "no audio")}` : `${label.title} ${text("음성 정보 확인 불가", "audio status unknown")}`} title={hasAudio === true ? text("이 카메라 소리 듣기", "Listen to this camera") : hasAudio === false ? text("음성 없음", "No audio") : text("음성 정보 확인 불가", "Audio status unknown")}>{hasAudio === true ? <SpeakerHigh aria-hidden="true" /> : <SpeakerSlash aria-hidden="true" />}</button>
       <button className="camera-action" type="button" onClick={pictureInPicture} aria-label={`${label.title} PiP`} title={text("브라우저 밖 PiP", "Picture-in-Picture")}><PictureInPicture aria-hidden="true" /></button>
       <button className="fullscreen-button" type="button" onClick={fullscreen} aria-label={`${label.title} ${fullscreenActive ? text("전체화면 축소", "exit fullscreen") : text("전체화면", "fullscreen")}`} aria-pressed={fullscreenActive} title={fullscreenActive ? text("전체화면 축소", "Exit fullscreen") : text("전체화면", "Fullscreen")}>{fullscreenActive ? <ArrowsIn aria-hidden="true" /> : <ArrowsOut aria-hidden="true" />}</button></span></header>
-    {unavailable ? <div className="preview-unavailable" role={primary ? "status" : "button"} aria-label={primary ? undefined : `${label.title} ${text("주 화면으로 전환", "make primary")}`} tabIndex={primary ? undefined : 0} onClick={() => { if (!primary) onPrimary(camera.id); }} onKeyDown={(event) => { if (!primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(camera.id); } }}><VideoCameraSlash size={31} aria-hidden="true" /><b>{capability.demo ? text("녹화 미리보기 없음", "Recording preview unavailable") : timelineLoading ? text("녹화 목록 불러오는 중", "Loading recordings") : timelineFailed ? text("녹화 목록 확인 불가", "Recording list unavailable") : text("현재 시각 녹화 없음", "No recording at this time")}</b><small>{capability.demo ? text("공개 데모에는 CCTV 영상이 포함되지 않습니다.", "The public demo does not include CCTV footage.") : timelineLoading ? text("카메라 녹화 구간을 확인하고 있습니다.", "Checking camera recording ranges.") : timelineFailed ? text("연결 상태를 확인한 뒤 다시 시도하세요.", "Check the connection and try again.") : text("다른 시각을 선택해 보세요.", "Choose another time.")}</small></div> : <div className="video-frame" role={primary ? undefined : "button"} tabIndex={primary ? undefined : 0} aria-label={primary ? undefined : `${label.title} ${text("주 화면으로 전환", "make primary")}`} onClick={() => { if (!primary) onPrimary(camera.id); }} onKeyDown={(event) => { if (!primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(camera.id); } }}>
-      <video className="active" data-segment-id={target.id} ref={videoRef} muted={audibleCamera !== camera.id} playsInline preload={multiCameraPlayback ? "metadata" : "auto"} src={`/api/v1/videos/${target.id}`} onLoadedMetadata={(event) => { event.currentTarget.currentTime = videoOffset(target, master); }} onSeeked={(event) => activate(event.currentTarget)} onCanPlay={(event) => activate(event.currentTarget)} onError={(event) => mediaError(event.currentTarget)} />
+    {unavailable ? <div className="preview-unavailable" role={primary ? "status" : "button"} aria-label={primary ? undefined : `${label.title} ${text("주 화면으로 전환", "make primary")}`} tabIndex={primary ? undefined : 0} onClick={() => { if (!primary) onPrimary(camera.id); }} onKeyDown={(event) => { if (!primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(camera.id); } }}><VideoCameraSlash size={31} aria-hidden="true" /><b>{capability.demo ? text("녹화 미리보기 없음", "Recording preview unavailable") : timelineLoading ? text("녹화 목록 불러오는 중", "Loading recordings") : timelineFailed ? text("녹화 목록 확인 불가", "Recording list unavailable") : text("현재 시각 녹화 없음", "No recording at this time")}</b><small>{capability.demo ? text("공개 데모에는 CCTV 영상이 포함되지 않습니다.", "The public demo does not include CCTV footage.") : timelineLoading ? text("카메라 녹화 구간을 확인하고 있습니다.", "Checking camera recording ranges.") : timelineFailed ? text("연결 상태를 확인한 뒤 다시 시도하세요.", "Check the connection and try again.") : text("다른 시각을 선택해 보세요.", "Choose another time.")}</small></div> : <div className="video-frame" ref={frameRef} role={primary ? undefined : "button"} tabIndex={primary ? undefined : 0} aria-label={primary ? undefined : `${label.title} ${text("주 화면으로 전환", "make primary")}`} onClick={() => { if (!primary) onPrimary(camera.id); }} onKeyDown={(event) => { if (!primary && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onPrimary(camera.id); } }}>
+      {[target, upcoming].map((segment) => {
+        if (!segment) return null;
+        const active = segment.id === target.id;
+        const key = active ? activeKey! : segment.id;
+        return <video
+          key={`${key}:${retry?.id === segment.id ? retry.count : 0}`} ref={releaseVideo}
+          className={active ? "active" : "standby"} data-segment-id={segment.id}
+          aria-hidden={!active} disablePictureInPicture={!active}
+          muted={!active || audibleCamera !== camera.id} playsInline
+          preload={!active || (multiCameraPlayback && !clockOwner) ? "metadata" : "auto"} src={`/api/v1/videos/${segment.id}`}
+          onLoadedMetadata={({ currentTarget }) => {
+            if (!active) {
+              // Prepare the first frame without requesting a full-file preload.
+              currentTarget.currentTime = Math.min(.01, currentTarget.duration);
+              return;
+            }
+            if (activeVideo() !== currentTarget) return;
+            const expected = videoOffset(segment, master);
+            if (currentTarget.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || Math.abs(currentTarget.currentTime - expected) > .25) currentTarget.currentTime = expected;
+            else activate(currentTarget);
+          }}
+          onSeeked={({ currentTarget }) => { if (active) activate(currentTarget); }}
+          onCanPlay={({ currentTarget }) => { if (active) activate(currentTarget); }}
+          onError={({ currentTarget }) => { if (active) mediaError(currentTarget); }}
+        />;
+      })}
       {(waiting || failed) && <div className={`video-loading ${failed ? "failed" : delayed ? "delayed" : ""}`} role="status"><b>{failed ? text("녹화를 재생할 수 없음", "Recording cannot be played") : delayed ? text("동기화 지연", "Synchronization delayed") : text("동기화 중", "Synchronizing")}</b>{(failed || delayed) && <button type="button" onClick={(event) => { event.stopPropagation(); retryVideo(); }}>{failed ? text("다시 시도", "Retry") : text("다시 요청", "Request again")}</button>}</div>}
     </div>}
     <footer>{timelineLoading ? text("녹화 목록 확인 중", "Checking recordings") : timelineFailed ? text("연결 상태 확인 필요", "Check connection") : target ? `${new Date(videoOffset(target, master) * 1000).toISOString().slice(14, 19)} · ${capability.demo ? text("미리보기 없음", "No preview") : focused ? text("모션", "Motion") : delayed ? text("동기화 지연", "Sync delayed") : waiting ? text("동기화 중", "Synchronizing") : text("녹화", "Recording")} · ${hasAudio === true ? audibleCamera === camera.id ? text("소리 재생", "Audio playing") : text("음성 있음", "Audio available") : hasAudio === false ? text("음성 없음", "No audio") : text("음성 정보 미확인", "Audio unknown")}` : text("녹화 상태 확인 필요", "Recording status unavailable")}</footer>
   </article>;
+}
+
+function releaseVideo(video: HTMLVideoElement | null) {
+  if (!video) return;
+  const segmentId = video.dataset.segmentId;
+  // Development StrictMode may replay the ref while keeping the same element.
+  if (segmentId && !video.hasAttribute("src")) video.src = `/api/v1/videos/${segmentId}`;
+  return () => {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  };
 }

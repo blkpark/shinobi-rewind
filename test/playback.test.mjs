@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cameraLabel, cameraTitle, cameraLimit, resolveCameraSelection, resolveFullCameraSelection } from "../src/lib/camera.js";
-import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, recordingLayoutExpands, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
+import { applyFocus, canCorrectMedia, compactPrimaryLayout, crossedRecordingBoundary, driftCorrection, focusLayout, monotonicMaster, nextSegment, recordingLayoutExpands, recordingToPreload, segmentAt, simultaneousFocus, supportsRecordingPreload, videoOffset } from "../src/lib/playback.js";
 import { clampRate, dayState, favoriteCountInRange, favoriteTimelineRanges, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
 const segments = [
@@ -23,6 +23,24 @@ test("corrects only drift over 500ms and rolls to the next recording", () => {
   assert.equal(driftCorrection(5.0, 5.6), 5.6);
   assert.equal(nextSegment(segments, at("00:20:00"))?.id, undefined);
   assert.equal(nextSegment(segments, at("00:09:59"))?.id, "b");
+});
+
+test("prepares only an adjacent recording near its boundary on a multiplexed connection", () => {
+  assert.equal(supportsRecordingPreload("http/1.1"), false);
+  assert.equal(supportsRecordingPreload(undefined), false);
+  assert.equal(supportsRecordingPreload("h2"), true);
+  assert.equal(supportsRecordingPreload("h3"), true);
+  assert.equal(recordingToPreload(segments, segments[1], at("00:09:50"), 1), undefined);
+  assert.equal(recordingToPreload(segments, segments[1], at("00:09:58"), 1)?.id, "b");
+  assert.equal(recordingToPreload(segments, segments[1], at("00:09:50"), 2)?.id, "b");
+  assert.equal(recordingToPreload(segments, segments[1], at("00:10:00"), 1), undefined);
+  assert.equal(recordingToPreload([...segments, { ...segments[0], id: "later", start: "2026-07-15T00:25:00+09:00" }], segments[0], at("00:19:58"), 1), undefined);
+});
+
+test("distinguishes an automatic file boundary from an explicit seek", () => {
+  assert.equal(crossedRecordingBoundary(segments[0], at("00:09:59"), at("00:10:00"), 3, 3), true);
+  assert.equal(crossedRecordingBoundary(segments[0], at("00:09:59"), at("00:10:00"), 3, 4), false);
+  assert.equal(crossedRecordingBoundary(segments[0], at("00:10:00"), at("00:10:01"), 3, 3), false);
 });
 
 test("never corrects a stale or currently seeking media element", () => {
@@ -263,8 +281,8 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(app, /syncVideo\(camera, video, masterRef\.current\).*\), 750\)/s);
   assert.match(app, /setPrimarySyncing\(true\)/);
   assert.match(app, /effectivePlaying = view !== "live" && playing && !primarySyncing && !layoutSyncing/);
-  assert.equal(grid.match(/<video /g)?.length, 1);
-  assert.match(grid, /data-segment-id=\{target\.id\}/);
+  assert.equal(grid.match(/<video\s/g)?.length, 1);
+  assert.match(grid, /data-segment-id=\{segment\.id\}/);
   assert.match(grid, /method: "HEAD"[\s\S]*response\.status === 404[\s\S]*onMediaMissing/);
   assert.match(app, /mediaRecovery\.current[\s\S]*setTimelineRevision/);
   assert.doesNotMatch(app, /Promise\.allSettled\(selected\.map\(\(camera\) => rewindAPI\.(timeline|events)/);
@@ -273,7 +291,7 @@ test("player and timeline keep bounded recovery, fullscreen, and drag wiring", (
   assert.match(app, /응답한 카메라부터 표시합니다/);
   assert.match(grid, /동기화 지연[\s\S]*다시 요청/);
   assert.doesNotMatch(grid, /key=\{`\$\{target\.id\}:\$\{seekRevision\}:\$\{retry\}`\}/);
-  assert.match(grid, /if \(retry > 0\) videoRef\.current\?\.load\(\)/);
+  assert.match(grid, /key=\{.*retry.*count/);
   assert.match(grid, /removeAttribute\("src"\)[\s\S]*video\.load\(\)/);
   assert.match(grid, /onCanPlay[\s\S]*onError/);
   assert.match(grid, /timelinePending\.includes\(camera\.id\)[\s\S]*timelineFailed\.includes\(camera\.id\)/);
