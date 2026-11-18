@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { cameraLabel, cameraTitle, resolveCameraSelection } from "../src/lib/camera.js";
+import { cameraLabel, cameraTitle, liveCameraLimit, resolveCameraSelection, resolveLiveCameraSelection } from "../src/lib/camera.js";
 import { applyFocus, canCorrectMedia, compactPrimaryLayout, driftCorrection, focusLayout, monotonicMaster, nextSegment, recordingLayoutExpands, segmentAt, simultaneousFocus, videoOffset } from "../src/lib/playback.js";
 import { clampRate, dayState, favoriteCountInRange, favoriteTimelineRanges, filterTimelineFavorites, formatDuration, formatKSTRange, includeCameraScope, kstDateAt, parseFavorites, parseKSTSecond, parseRateDraft, pipMode, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, shiftMonth, timelineDragTime, timelinePointTime, toggleAudible, transportJump } from "../src/lib/interaction.js";
 
@@ -118,6 +118,16 @@ test("falls back to available cameras when saved IDs are stale", () => {
   ];
   assert.deepEqual(resolveCameraSelection(cameras, ["CAM-201", "CAM-202"]), ["opaque-201", "opaque-202"]);
   assert.deepEqual(resolveCameraSelection(cameras, ["opaque-202", "CAM-201"]), ["opaque-202"]);
+});
+
+test("live links keep seven distinct cameras while recording selection caps at six", () => {
+  const cameras = Array.from({ length: 7 }, (_, index) => ({ id: `opaque-${index}`, name: String(201 + index), detector: false }));
+  const ids = cameras.map((camera) => camera.id);
+  assert.deepEqual(resolveCameraSelection(cameras, [...ids.slice(0, 6), ids[0], ids[6]], liveCameraLimit), ids);
+  assert.deepEqual(resolveCameraSelection(cameras, ids), ids.slice(0, 6));
+  assert.deepEqual(resolveLiveCameraSelection(cameras, ids.slice(0, 6)), ids);
+  assert.deepEqual(resolveLiveCameraSelection(cameras, [ids[6]]), [ids[6]]);
+  assert.deepEqual(resolveLiveCameraSelection(cameras.slice(0, 6), ids.slice(0, 6)), ids.slice(0, 6));
 });
 
 test("favorites survive serialization and corrupt storage fails closed", () => {

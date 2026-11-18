@@ -56,6 +56,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .layout-presets button.active { background: #1766ce; color: #fff; }
 .live-grid { display: grid; min-height: 0; gap: 8px; }
 .live-grid.live-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.live-grid.live-wide { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .live-grid.live-primary { grid-auto-flow: dense; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
 .live-primary > .live-card.live-primary { grid-column: span 2; grid-row: span 2; }
 .live-grid.live-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
@@ -226,10 +227,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 @media (max-width: 980px) {
   body { overflow: auto; }.console { height: auto; min-height: 100vh; }.control-view { display: block; height: auto; }.topbar { flex-wrap: wrap; padding: 8px 0; }.topbar nav { order: 3; width: 100%; margin: 0; }.topbar nav button { flex: 1; }
   .workspace { grid-template-columns: 1fr; }.events { min-height: auto; padding: 12px 0; border-top: 1px solid #1d3b50; border-left: 0; }.controls { flex-wrap: wrap; }.camera-grid.primary-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(280px, 50vh) repeat(3, 180px); }.primary-layout .camera-card.primary-camera { grid-column: 1 / -1; grid-row: auto; }.layout-resizer { display: none; }.camera-card.supporting-camera { grid-column: auto; }.calendar-search { grid-template-columns: 1fr; height: auto; }.calendar-content { min-height: 620px; }.search-filters { display: grid; grid-template-columns: repeat(3, 1fr); }.search-filters h1, .search-trust { grid-column: 1 / -1; }.archive-day { grid-template-columns: 170px 1fr; }.archive-preview { grid-column: 1 / -1; min-height: 520px; }
-  .live-view { height: auto; }.live-toolbar { flex-wrap: wrap; }.live-grid, .live-grid.live-grid, .live-grid.live-primary, .live-grid.live-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 240px; }.live-primary > .live-card.live-primary { grid-column: 1 / -1; grid-row: auto; min-height: 420px; }
+  .live-view { height: auto; }.live-toolbar { flex-wrap: wrap; }.live-grid, .live-grid.live-grid, .live-grid.live-wide, .live-grid.live-primary, .live-grid.live-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 240px; }.live-primary > .live-card.live-primary { grid-column: 1 / -1; grid-row: auto; min-height: 420px; }
 }
 @media (max-width: 640px) {
   .console { padding: 8px; }.brand { font-size: 12px; }.clock { display: none; }.camera-grid.primary-layout { display: grid; grid-template-columns: 1fr; grid-template-rows: 280px; }.primary-layout .camera-card.primary-camera, .camera-card.supporting-camera { grid-column: auto; min-height: 180px; }.timeline { --timeline-label-width: 82px; }.timeline-row { grid-template-columns: 72px 1fr; }.timeline-axis { margin-left: 82px; }.transport { flex-wrap: wrap; gap: 8px; }.search-card { grid-template-columns: 1fr; }.search-card .primary { min-height: 42px; }.search-view { margin: 32px 0; }.search-view h1 { font-size: 28px; }
-  .live-grid, .live-grid.live-grid, .live-grid.live-primary, .live-grid.live-quad { grid-template-columns: 1fr; grid-auto-rows: 240px; }.live-primary > .live-card.live-primary { grid-column: auto; min-height: 280px; }.layout-presets { width: 100%; }.layout-presets button { flex: 1; }
+  .live-grid, .live-grid.live-grid, .live-grid.live-wide, .live-grid.live-primary, .live-grid.live-quad { grid-template-columns: 1fr; grid-auto-rows: 240px; }.live-primary > .live-card.live-primary { grid-column: auto; min-height: 280px; }.layout-presets { width: 100%; }.layout-presets button { flex: 1; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }

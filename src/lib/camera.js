@@ -1,5 +1,7 @@
 // @ts-check
 
+export const liveCameraLimit = 7;
+
 /** @param {import("./types").Camera} camera */
 export function cameraLabel(camera) {
   const name = camera.name.trim();
@@ -17,6 +19,13 @@ export function cameraTitle(cameras, id) {
 
 /** @param {import("./types").Camera[]} cameras @param {string[]} requested @param {number} [limit] */
 export function resolveCameraSelection(cameras, requested, limit = 6) {
-  const valid = requested.filter((id) => cameras.some((camera) => camera.id === id)).slice(0, limit);
+  const valid = [...new Set(requested)].filter((id) => cameras.some((camera) => camera.id === id)).slice(0, limit);
   return valid.length ? valid : cameras.slice(0, limit).map((camera) => camera.id);
+}
+
+/** @param {import("./types").Camera[]} cameras @param {string[]} requested */
+export function resolveLiveCameraSelection(cameras, requested) {
+  const selected = resolveCameraSelection(cameras, requested, liveCameraLimit);
+  if (cameras.length !== liveCameraLimit || selected.length !== liveCameraLimit - 1 || !requested.length) return selected;
+  return [...selected, ...cameras.map(({ id }) => id).filter((id) => !selected.includes(id))];
 }

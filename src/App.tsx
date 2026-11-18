@@ -56,6 +56,7 @@ export function App() {
   const [master, setMaster] = useState(initial.master);
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [selected, setSelected] = useState<string[]>(initial.selected);
+  const [liveSelected, setLiveSelected] = useState<string[] | null>(initial.view === "live" ? initial.selected : null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [timelinePending, setTimelinePending] = useState<string[]>([]);
   const [timelineFailed, setTimelineFailed] = useState<string[]>([]);
@@ -145,10 +146,11 @@ export function App() {
 
   const urlSecond = Math.floor(master);
   useEffect(() => {
-    const params = new URLSearchParams({ view, date, time: formatTime(urlSecond), cameras: selected.join(","), rate: String(rate), motion: autoFocus ? "on" : "off" });
+    const cameraScope = view === "live" ? liveSelected ?? selected : selected;
+    const params = new URLSearchParams({ view, date, time: formatTime(urlSecond), cameras: cameraScope.join(","), rate: String(rate), motion: autoFocus ? "on" : "off" });
     history.replaceState(null, "", `${location.pathname}?${params}`);
     if (!safeStorageSet(browserStorage(), "shinobi-rewind:view", view)) setNotice(text("마지막 화면을 브라우저에 저장할 수 없습니다.", "Could not save the last view in this browser."));
-  }, [view, date, urlSecond, selected, rate, autoFocus]);
+  }, [view, date, urlSecond, selected, liveSelected, rate, autoFocus]);
 
   useEffect(() => {
     if (view === "live") { setSegments([]); setTimelineFailed([]); setTimelinePending([]); return; }
@@ -364,7 +366,7 @@ export function App() {
 		<div className="language-switch" role="group" aria-label={text("언어", "Language")}><button className={language === "ko" ? "active" : ""} aria-pressed={language === "ko"} onClick={() => setLanguage("ko")}>한국어</button><button className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button></div>
 		{view !== "live" && <button className="ghost" onClick={openSearch}>{text("시간 점프", "Jump to time")}</button>}
     </header>
-    {view === "live" ? <LiveView selected={selected} onRecorded={openRecorded} onNotice={setNotice} /> : view === "search" ? <SearchView date={date} cameras={cameras} selected={selected} segments={segments} events={events} favorites={favorites} capability={capability} eventState={eventState} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, allCameras: cameras, segments, timelineLoading, timelinePending, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, layoutSyncing, setLayoutSyncing, recordingLayout, setRecordingLayout, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, removeFavorite, jumpFavorite, favoriteRange: favoriteRangeLabel(effectivePrimaryCamera || null), audibleCamera: rate > 4 ? null : audibleCamera, setAudio, setNotice, changeDate, changeClock }} />}
+    {view === "live" ? <LiveView selected={liveSelected ?? selected} onSelect={setLiveSelected} onRecorded={openRecorded} onNotice={setNotice} /> : view === "search" ? <SearchView date={date} cameras={cameras} selected={selected} segments={segments} events={events} favorites={favorites} capability={capability} eventState={eventState} timelineLoading={timelineLoading} timelineFailed={timelineFailed} onDate={changeDate} onTime={changeClock} onCamera={setCamera} onOpen={() => setView("control")} /> : <ControlView {...{ date, cameras: shownCameras, allCameras: cameras, segments, timelineLoading, timelinePending, timelineFailed, events, capability, eventState, master, seekTo, seekRevision, primaryCamera: effectivePrimaryCamera, setPrimaryCamera, primaryRatio, setPrimaryRatio, setPrimarySyncing, layoutSyncing, setLayoutSyncing, recordingLayout, setRecordingLayout, rate, setRate, playing, setPlaying, autoFocus, setAutoFocus, focused, focus, pinned, pinFocus, videos, syncVideo, navigateEvent, recoverMediaIndex, favorites, toggleFavorite, removeFavorite, jumpFavorite, favoriteRange: favoriteRangeLabel(effectivePrimaryCamera || null), audibleCamera: rate > 4 ? null : audibleCamera, setAudio, setNotice, changeDate, changeClock }} />}
     {notice && <div className="notice" role="status" onAnimationEnd={() => setNotice("")}>{notice}</div>}
   </main>;
 }

@@ -3,17 +3,24 @@ import type HlsInstance from "hls.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { rewindAPI } from "../lib/api";
-import { cameraLabel } from "../lib/camera.js";
+import { cameraLabel, liveCameraLimit, resolveCameraSelection, resolveLiveCameraSelection } from "../lib/camera.js";
 import { localizeMessage, useLanguage } from "../lib/i18n";
 import { pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, toggleAudible } from "../lib/interaction.js";
 import type { LiveCamera, LiveCapability } from "../lib/types";
 
-type Layout = "grid" | "primary" | "quad" | "single";
+type Layout = "grid" | "wide" | "primary" | "quad" | "single";
 type Quality = "low" | "high";
 type LiveState = "connecting" | "live" | "degraded" | "reconnecting" | "offline" | "stale" | "unsupported" | "forbidden" | "unavailable";
 type SavedLayout = { version: 1; layout: Layout; primary: string; order: string[] };
 
 const storageKey = "shinobi-rewind:live-layout:v1";
+const layoutPresets = [
+  ["grid", "3×2", "3×2", 6],
+  ["wide", "4×2", "4×2", liveCameraLimit],
+  ["primary", "주+5", "Primary + 5", 6],
+  ["quad", "2×2", "2×2", 4],
+  ["single", "1대", "Single", 1],
+] as const;
 const emptyCapability: LiveCapability = { available: false, transport: null, lowQuality: false, message: "실시간 스트림 확인 중" };
 const stateLabelKO: Record<LiveState, string> = {
   connecting: "연결 중", live: "LIVE", degraded: "저대역폭/지연", reconnecting: "재연결 중",
@@ -28,17 +35,17 @@ const browserStorage = () => { try { return window.localStorage; } catch { retur
 function loadLayout(): SavedLayout | null {
   try {
     const value = JSON.parse(safeStorageGet(browserStorage(), storageKey) || "null") as SavedLayout | null;
-    return value?.version === 1 && typeof value.primary === "string" && ["grid", "primary", "quad", "single"].includes(value.layout) && Array.isArray(value.order) && value.order.every((id) => typeof id === "string") ? value : null;
+    return value?.version === 1 && typeof value.primary === "string" && layoutPresets.some(([layout]) => layout === value.layout) && Array.isArray(value.order) && value.order.every((id) => typeof id === "string") ? value : null;
   } catch { return null; }
 }
 
-export function LiveView({ selected, onRecorded, onNotice }: { selected: string[]; onRecorded: (camera: string, at: string) => void; onNotice: (message: string) => void }) {
+export function LiveView({ selected, onSelect, onRecorded, onNotice }: { selected: string[]; onSelect: (ids: string[]) => void; onRecorded: (camera: string, at: string) => void; onNotice: (message: string) => void }) {
   const { language, text } = useLanguage();
   const saved = useMemo(loadLayout, []);
   const [capability, setCapability] = useState(emptyCapability);
   const [cameras, setCameras] = useState<LiveCamera[]>([]);
   const [failed, setFailed] = useState(false);
-  const [layout, setLayout] = useState<Layout>(saved?.layout || "grid");
+  const [layoutChoice, setLayout] = useState<Layout | null>(null);
   const [primary, setPrimary] = useState(saved?.primary || "");
   const [order, setOrder] = useState<string[]>(saved?.order || []);
   const [audible, setAudible] = useState<string | null>(null);
@@ -73,10 +80,24 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
   }, []);
 
   const scoped = useMemo(() => {
-    const allowed = cameras.filter((camera) => !selected.length || selected.includes(camera.id));
-    const byID = new Map(allowed.map((camera) => [camera.id, camera]));
-    return [...order.map((id) => byID.get(id)).filter((camera): camera is LiveCamera => Boolean(camera)), ...allowed.filter((camera) => !order.includes(camera.id))].slice(0, 6);
+    const ids = resolveLiveCameraSelection(cameras, selected);
+    const byID = new Map(cameras.map((camera) => [camera.id, camera]));
+    const allowed = new Set(ids);
+    return [...new Set([...order, ...ids])].flatMap((id) => {
+      const camera = allowed.has(id) ? byID.get(id) : undefined;
+      return camera ? [camera] : [];
+    });
   }, [cameras, order, selected]);
+  const wideScope = scoped.length === liveCameraLimit;
+  const preferredLayout = layoutChoice ?? (wideScope ? "wide" : saved?.layout ?? "grid");
+  const layout = preferredLayout === "wide" && !wideScope ? "grid" : preferredLayout;
+
+  const changeLayout = (next: Layout) => {
+    if (next === "wide" && !wideScope) {
+      onSelect(resolveCameraSelection(cameras, [...selected, ...cameras.map((camera) => camera.id)], liveCameraLimit));
+    }
+    setLayout(next);
+  };
 
   useEffect(() => {
     if (!scoped.length) { setPrimary(""); return; }
@@ -93,12 +114,12 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
     const main = scoped.find((camera) => camera.id === primary) || scoped[0];
     return main ? [main, ...scoped.filter((camera) => camera.id !== main.id)] : [];
   }, [primary, scoped]);
-  const visible = ordered.slice(0, layout === "single" ? 1 : layout === "quad" ? 4 : 6);
+  const visible = ordered.slice(0, layoutPresets.find(([value]) => value === layout)?.[3]);
   const liveCount = visible.filter((camera) => statuses[camera.id] === "live").length;
   const promote = (camera: string) => { setPrimary(camera); setOrder((current) => [camera, ...current.filter((id) => id !== camera)]); };
-  const columns = layout === "quad" ? 2 : layout === "single" ? 1 : layout === "grid" ? 3 : 3;
   const moveFocus = (event: React.KeyboardEvent<HTMLElement>, index: number) => {
     if (event.target !== event.currentTarget) return;
+    const columns = gridRef.current ? getComputedStyle(gridRef.current).gridTemplateColumns.split(" ").length : 1;
     const delta = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" ? -columns : event.key === "ArrowDown" ? columns : 0;
     const next = event.key === "Home" ? 0 : event.key === "End" ? visible.length - 1 : Math.max(0, Math.min(visible.length - 1, index + delta));
     if (delta || event.key === "Home" || event.key === "End") { event.preventDefault(); gridRef.current?.querySelectorAll<HTMLElement>("[data-live-card]")[next]?.focus(); }
@@ -119,7 +140,7 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
     <div className="live-toolbar">
       <span className="live-summary">{language === "ko" ? `${visible.length}대 중 ${liveCount}대 LIVE` : `${liveCount} of ${visible.length} LIVE`}{capability.message ? ` · ${localizeMessage(capability.message, language)}` : ""}</span>
       <div className="layout-presets" aria-label={text("실시간 레이아웃", "Live layout")}>
-        {([['grid', '3×2', '3×2'], ['primary', '주+5', 'Primary + 5'], ['quad', '2×2', '2×2'], ['single', '1대', 'Single']] as const).map(([value, ko, en]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => setLayout(value)} key={value}>{text(ko, en)}</button>)}
+        {layoutPresets.filter(([value]) => value !== "wide" || cameras.length >= liveCameraLimit).map(([value, ko, en]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => changeLayout(value)} key={value}>{text(ko, en)}</button>)}
       </div>
       <div className="layout-presets" aria-label={text("실시간 화질", "Live quality")}>
         {([['low', '저화질', 'Low'], ['high', '고화질', 'High']] as const).map(([value, ko, en]) => <button type="button" className={quality === value ? "active" : ""} aria-pressed={quality === value} onClick={() => setQuality(value)} key={value}>{text(ko, en)}</button>)}
@@ -129,14 +150,14 @@ export function LiveView({ selected, onRecorded, onNotice }: { selected: string[
       {failed && <button type="button" className="ghost" onClick={refresh}>{text("목록 다시 확인", "Reload list")}</button>}
     </div>
     <div ref={gridRef} className={`live-grid live-${layout}`} aria-label={text("실시간 카메라 그리드", "Live camera grid")}>
-      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} quality={capability.lowQuality ? quality : "high"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
+      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} preferHlsJS={visible.length === liveCameraLimit} quality={capability.lowQuality ? quality : "high"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
       {!visible.length && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" /><b>{failed ? text("실시간 카메라 목록 확인 불가", "Live camera list unavailable") : text("표시할 카메라가 없습니다.", "No cameras to display.")}</b><small>{localizeMessage(capability.message, language)}</small></div>}
     </div>
   </section>;
 }
 
-function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, audible, onAudible, onPrimary, onRecorded, onState, onNotice, onKeyDown }: {
-  camera: LiveCamera; primary: boolean; quality: Quality; retryAll: number; enabled: boolean; disabledState: "connecting" | "unavailable"; audible: boolean;
+function LiveTile({ camera, primary, preferHlsJS, quality, retryAll, enabled, disabledState, audible, onAudible, onPrimary, onRecorded, onState, onNotice, onKeyDown }: {
+  camera: LiveCamera; primary: boolean; preferHlsJS: boolean; quality: Quality; retryAll: number; enabled: boolean; disabledState: "connecting" | "unavailable"; audible: boolean;
   onAudible: () => void; onPrimary: () => void; onRecorded: (camera: string, at: string) => void;
   onState: (state: LiveState) => void; onNotice: (message: string) => void; onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
 }) {
@@ -167,7 +188,7 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
     const timers: number[] = [];
     const source = rewindAPI.livePlaylist(camera.id, streamQuality);
     lastProgressRef.current = null;
-    lastCurrentTimeRef.current = -1;
+    lastCurrentTimeRef.current = 0;
     const markLive = () => {
       if (video.currentTime <= lastCurrentTimeRef.current + .01) return;
       lastCurrentTimeRef.current = video.currentTime;
@@ -176,13 +197,17 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
       if (stateRef.current !== "live") { setLastFrameAt(lastProgressRef.current); updateState("live"); }
     };
     updateState("connecting");
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    const nativeHls = video.canPlayType("application/vnd.apple.mpegurl");
+    const startNative = () => {
       video.src = source;
-      void video.play().catch(() => updateState("offline"));
+      void video.play().catch(() => { if (!cancelled) updateState("offline"); });
+    };
+    if (nativeHls && !preferHlsJS) {
+      startNative();
     } else {
       void import("hls.js").then(({ default: Hls, ErrorTypes }) => {
         if (cancelled) return;
-        if (!Hls.isSupported()) { updateState("unsupported"); return; }
+        if (!Hls.isSupported()) { if (nativeHls) startNative(); else updateState("unsupported"); return; }
         hls = new Hls({ backBufferLength: 30, liveSyncDurationCount: 2 });
         hls.loadSource(source);
         hls.attachMedia(video);
@@ -199,7 +224,7 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
           }
           updateState(data.type === ErrorTypes.MEDIA_ERROR ? "unsupported" : "offline");
         });
-      }).catch(() => { if (!cancelled) updateState("unsupported"); });
+      }).catch(() => { if (!cancelled) { if (nativeHls) startNative(); else updateState("unsupported"); } });
     }
     video.addEventListener("timeupdate", markLive);
     const waiting = () => { if (stateRef.current === "live") updateState("degraded"); };
@@ -226,7 +251,7 @@ function LiveTile({ camera, primary, quality, retryAll, enabled, disabledState, 
       video.pause(); video.removeAttribute("src");
       releaseTimerRef.current = window.setTimeout(() => { video.load(); releaseTimerRef.current = null; }, 0);
     };
-  }, [camera.id, disabledState, enabled, retry, retryAll, streamQuality]);
+  }, [camera.id, disabledState, enabled, preferHlsJS, retry, retryAll, streamQuality]);
 
   useEffect(() => { const video = videoRef.current; if (video) video.muted = !audible; }, [audible]);
   useEffect(() => {
