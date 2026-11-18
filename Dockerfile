@@ -10,12 +10,15 @@ FROM golang:1.26-alpine AS build
 WORKDIR /app
 COPY go.mod ./
 RUN go mod download
+ARG RELEASE_SHA
 COPY . .
 COPY --from=web /app/internal/rewind/web/dist ./internal/rewind/web/dist
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /shinobi-rewind ./cmd/shinobi-rewind
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /shinobi-rewind ./cmd/shinobi-rewind \
+    && printf '%s\n' "$RELEASE_SHA" > /release-input-sha
 
 FROM alpine:3.22
 COPY --from=build /shinobi-rewind /shinobi-rewind
+COPY --from=build /release-input-sha /release-input-sha
 COPY LICENSE THIRD_PARTY_NOTICES.md /licenses/
 ENV LISTEN_ADDR=:8080
 EXPOSE 8080
