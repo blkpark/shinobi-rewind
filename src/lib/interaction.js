@@ -1,3 +1,5 @@
+import { cameraLimit } from "./camera.js";
+
 export const minRate = .25;
 export const maxRate = 20;
 
@@ -108,7 +110,7 @@ export function timelinePointTime(visibleStart, clientX, trackLeft, trackWidth, 
   return visibleStart + Math.max(0, Math.min(1, (clientX - trackLeft) / trackWidth)) * span;
 }
 
-export function includeCameraScope(selected, cameraId, available, max = 6) {
+export function includeCameraScope(selected, cameraId, available, max = cameraLimit) {
   if (!cameraId || !available.includes(cameraId) || selected.includes(cameraId)) return selected;
   return selected.length < max ? [...selected, cameraId] : [cameraId, ...selected.slice(0, max - 1)];
 }

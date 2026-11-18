@@ -1,7 +1,7 @@
 import { ArrowsIn, ArrowsOut, Camera as CameraIcon, PictureInPicture, SpeakerHigh, SpeakerSlash, Star, VideoCameraSlash } from "@phosphor-icons/react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { cameraLabel } from "../lib/camera.js";
+import { cameraLabel, cameraLimit } from "../lib/camera.js";
 import { useLanguage } from "../lib/i18n";
 import { pipMode, reportDisplayRequest } from "../lib/interaction.js";
 import { compactPrimaryLayout, focusLayout, segmentAt, videoOffset } from "../lib/playback.js";
@@ -51,7 +51,8 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
   }, []);
 
   const visible = fullscreenCamera ? ordered.filter((camera) => camera.id === fullscreenCamera) : focused.length > 1 ? ordered : recordingLayout === "single" ? ordered.slice(0, 1) : recordingLayout === "quad" ? ordered.slice(0, 4) : ordered;
-  const layout = fullscreenCamera ? "recording-single fullscreen-recording" : focused.length > 1 ? focusLayout(focused.length) : recordingLayout === "primary" ? compact ? "compact-primary" : "primary-layout" : `recording-${recordingLayout}`;
+  const seven = visible.length === cameraLimit;
+  const layout = fullscreenCamera ? "recording-single fullscreen-recording" : focused.length > 1 ? focusLayout(focused.length) : recordingLayout === "primary" ? compact && !seven ? "compact-primary" : "primary-layout" : `recording-${recordingLayout}`;
   useEffect(() => {
     if (!layoutSyncing) return;
     if (capability.demo) { onLayoutSynced(); return; }
@@ -67,7 +68,7 @@ export function CameraGrid({ layout: recordingLayout, cameras, segments, timelin
     if (video.dataset.segmentId) setReadySegments((current) => ({ ...current, [camera.id]: video.dataset.segmentId! }));
     onReady(camera, video);
   };
-  return <div ref={grid} className={`camera-grid ${layout}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
+  return <div ref={grid} className={`camera-grid ${layout}${seven ? " seven-cameras" : ""}${focused.length === 3 ? " focus-three" : ""}`} style={{ "--primary-width": `${primaryRatio}%` } as React.CSSProperties}>
     {visible.map((camera, index) => <CameraTile key={camera.id} {...{
       camera, cameraSegments: segments.filter((item) => item.cameraId === camera.id), master, capability,
       timelineLoading: timelinePending.includes(camera.id), timelineFailed: timelineFailed.includes(camera.id),

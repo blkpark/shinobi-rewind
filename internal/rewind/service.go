@@ -191,13 +191,15 @@ func parseKSTDate(raw string) (time.Time, error) {
 	return time.ParseInLocation("2006-01-02", raw, seoul)
 }
 
+const cameraSelectionLimit = 7
+
 func (s *Service) recordingSummary(w http.ResponseWriter, r *http.Request) {
 	from, fromErr := parseKSTDate(r.URL.Query().Get("from"))
 	last, toErr := parseKSTDate(r.URL.Query().Get("to"))
 	to := last.AddDate(0, 0, 1)
 	cameras := strings.Split(r.URL.Query().Get("cameras"), ",")
-	if fromErr != nil || toErr != nil || !to.After(from) || to.Sub(from) > 31*24*time.Hour || len(cameras) == 0 || len(cameras) > 6 {
-		http.Error(w, "from/to must cover 1-31 KST days and 1-6 cameras are required", http.StatusBadRequest)
+	if fromErr != nil || toErr != nil || !to.After(from) || to.Sub(from) > 31*24*time.Hour || len(cameras) == 0 || len(cameras) > cameraSelectionLimit {
+		http.Error(w, "from/to must cover 1-31 KST days and 1-7 cameras are required", http.StatusBadRequest)
 		return
 	}
 	seen := map[string]bool{}

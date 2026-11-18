@@ -680,8 +680,8 @@ func (s *Service) createArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	at, err := time.Parse(time.RFC3339, request.At)
 	request.Label = strings.TrimSpace(request.Label)
-	if err != nil || len(request.CameraIDs) == 0 || len(request.CameraIDs) > 6 || len(request.Label) > 200 {
-		http.Error(w, "valid at, 1-6 cameras and a short label are required", http.StatusBadRequest)
+	if err != nil || len(request.CameraIDs) == 0 || len(request.CameraIDs) > cameraSelectionLimit || len(request.Label) > 200 {
+		http.Error(w, "valid at, 1-7 cameras and a short label are required", http.StatusBadRequest)
 		return
 	}
 	seen := map[string]struct{}{}

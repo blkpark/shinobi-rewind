@@ -241,6 +241,28 @@ func TestRecordingSummaryAggregatesVisibleHoursAndPartialFailures(t *testing.T) 
 	}
 }
 
+func TestRecordingSummarySupportsSevenCameras(t *testing.T) {
+	cameras := make([]Camera, 8)
+	ids := make([]string, len(cameras))
+	for i := range cameras {
+		ids[i] = fmt.Sprintf("CAM-%d", i+1)
+		cameras[i] = Camera{ID: ids[i]}
+	}
+	handler := NewService(Config{}, testSource{cameras: cameras}).Handler()
+	for _, tc := range []struct{ count, status int }{{7, http.StatusOK}, {8, http.StatusBadRequest}} {
+		res := httptest.NewRecorder()
+		request := "/api/v1/recording-summary?from=2026-07-15&to=2026-07-15&cameras=" + strings.Join(ids[:tc.count], ",")
+		handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, request, nil))
+		if res.Code != tc.status {
+			t.Fatalf("camera count %d: status = %d, want %d", tc.count, res.Code, tc.status)
+		}
+		var summary RecordingSummary
+		if tc.status == http.StatusOK && (json.Unmarshal(res.Body.Bytes(), &summary) != nil || summary.CameraCount != tc.count) {
+			t.Fatalf("camera count %d: summary = %s", tc.count, res.Body.String())
+		}
+	}
+}
+
 func TestRecordingSummaryRejectsInvalidRangesAndCameraScopes(t *testing.T) {
 	s := NewService(Config{}, testSource{cameras: []Camera{{ID: "CAM-1"}}})
 	for _, raw := range []string{

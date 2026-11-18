@@ -1,3 +1,5 @@
+import { cameraLimit } from "./camera.js";
+
 const toSeconds = (value) => typeof value === "number" ? value : Date.parse(value) / 1000;
 
 export function segmentAt(segments, masterSeconds) {
@@ -67,6 +69,6 @@ export function compactPrimaryLayout(width, height) {
 }
 
 export function recordingLayoutExpands(current, next) {
-  const size = (layout) => layout === "single" ? 1 : layout === "quad" ? 4 : 6;
+  const size = (layout) => layout === "single" ? 1 : layout === "quad" ? 4 : cameraLimit;
   return size(next) > size(current);
 }

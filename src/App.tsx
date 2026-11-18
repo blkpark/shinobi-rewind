@@ -6,7 +6,7 @@ import { Timeline } from "./components/Timeline";
 import { SearchView } from "./components/SearchView";
 import { LiveView } from "./components/LiveView";
 import { rewindAPI } from "./lib/api";
-import { cameraTitle, resolveCameraSelection } from "./lib/camera.js";
+import { cameraLimit, cameraTitle, resolveFullCameraSelection } from "./lib/camera.js";
 import { localizeMessage, useLanguage } from "./lib/i18n";
 import { clampRate, formatKSTRange, includeCameraScope, kstDateAt, maxRate, parseFavorites, parseKSTSecond, parseRateDraft, rebaseKSTDate, reportDisplayRequest, safeStorageGet, safeStorageSet, serializeFavorites, setSupportedPlaybackRate, toggleAudible, transportJump, type Favorite } from "./lib/interaction.js";
 import { applyFocus, canCorrectMedia, driftCorrection, expireFocus, monotonicMaster, recordingLayoutExpands, segmentAt, simultaneousFocus, videoOffset, type FocusState } from "./lib/playback.js";
@@ -101,7 +101,7 @@ export function App() {
 	useEffect(() => {
 		void rewindAPI.cameras().then((data) => {
 			setCameras(data);
-			setSelected((old) => resolveCameraSelection(data, old));
+			setSelected((old) => resolveFullCameraSelection(data, old));
 			const known = new Set(data.map((camera) => camera.id));
 			void Promise.allSettled(favorites.filter((favorite) => favorite.cameraId && known.has(favorite.cameraId)).map((favorite) => rewindAPI.createArchive({ at: favorite.at, cameraIds: [favorite.cameraId!], label: favorite.label })));
 		}).catch(() => setCapability({ demo: false, motion: "unavailable", message: "카메라 상태 확인 불가" }));
@@ -292,7 +292,7 @@ export function App() {
   };
   const navigateEvent = (direction: 1 | -1) => {
     const target = direction === 1 ? events.find((event) => Date.parse(event.at) / 1000 > master) : [...events].reverse().find((event) => Date.parse(event.at) / 1000 < master);
-    if (target) { seekTo(Date.parse(target.at) / 1000); setSelected((old) => old.includes(target.cameraId) ? old : [...old, target.cameraId].slice(0, 6)); setView("control"); }
+    if (target) { seekTo(Date.parse(target.at) / 1000); setSelected((old) => includeCameraScope(old, target.cameraId, orderedIds)); setView("control"); }
   };
   const recoverMediaIndex = () => {
     if (mediaRecovery.current) return;
@@ -302,7 +302,7 @@ export function App() {
   const changeDate = (next: string) => { if (parseKSTSecond(next, "00:00:00") === null) return; setDate(next); seekTo(kstSecond(next, formatTime(master))); };
   const changeClock = (next: string) => { const value = parseKSTSecond(date, next); if (value !== null) seekTo(value); };
   const openSearch = () => { if (view !== "search") setDate(kstDateAt(Date.now() / 1000)); setView("search"); };
-  const setCamera = (next: string) => setSelected(next === "all" ? cameras.slice(0, 6).map((camera) => camera.id) : [next]);
+  const setCamera = (next: string) => setSelected(next === "all" ? cameras.slice(0, cameraLimit).map((camera) => camera.id) : [next]);
   const favoriteRangeLabel = (cameraId: string | null, atSecond = master) => {
     const ids = cameraId ? [cameraId] : shownCameras.map((camera) => camera.id);
     const ranges = ids.map((id) => {
@@ -422,7 +422,7 @@ function ControlView(props: { date: string; cameras: Camera[]; allCameras: Camer
     setLayoutSyncing(playing && recordingLayoutExpands(recordingLayout, value));
     setRecordingLayout(value);
   };
-  return <div ref={controlRef} className="control-view"><section className="controls"><span className="control-summary">{language === "ko" ? `선택 카메라 ${cameras.length}대 · ${focused.length ? `${focused.length}개 자동 포커스` : "전체 보기"}` : `${cameras.length} selected · ${focused.length ? `${focused.length} auto-focused` : "All cameras"}`}</span><div className="layout-presets" aria-label={text("녹화 레이아웃", "Recording layout")}>{([['grid', '3×2', '3×2'], ['primary', '주+5', 'Primary + 5'], ['quad', '2×2', '2×2'], ['single', '1대', 'Single']] as const).map(([value, ko, en]) => <button type="button" className={recordingLayout === value ? "active" : ""} aria-pressed={recordingLayout === value} onClick={() => changeLayout(value)} key={value}>{text(ko, en)}</button>)}</div><TimeJumpControl master={master} onChange={changeClock} /><button className="ghost" type="button" onClick={() => setPlaying((value) => !value)}>{playing ? text("전체 일시정지", "Pause all") : text("전체 재생", "Play all")}</button>
+  return <div ref={controlRef} className="control-view"><section className="controls"><span className="control-summary">{language === "ko" ? `선택 카메라 ${cameras.length}대 · ${focused.length ? `${focused.length}개 자동 포커스` : "전체 보기"}` : `${cameras.length} selected · ${focused.length ? `${focused.length} auto-focused` : "All cameras"}`}</span><div className="layout-presets" aria-label={text("녹화 레이아웃", "Recording layout")}>{([['grid', cameras.length === cameraLimit ? '4×2' : '3×2', cameras.length === cameraLimit ? '4×2' : '3×2'], ['primary', cameras.length === cameraLimit ? '주+6' : '주+5', cameras.length === cameraLimit ? 'Primary + 6' : 'Primary + 5'], ['quad', '2×2', '2×2'], ['single', '1대', 'Single']] as const).map(([value, ko, en]) => <button type="button" className={recordingLayout === value ? "active" : ""} aria-pressed={recordingLayout === value} onClick={() => changeLayout(value)} key={value}>{text(ko, en)}</button>)}</div><TimeJumpControl master={master} onChange={changeClock} /><button className="ghost" type="button" onClick={() => setPlaying((value) => !value)}>{playing ? text("전체 일시정지", "Pause all") : text("전체 재생", "Play all")}</button>
     <div className="toggle-wrap"><span>{text("모션 자동 포커스", "Motion auto-focus")} <Info aria-hidden="true" /></span><button type="button" className={`toggle ${autoFocus && motionEnabled ? "on" : ""}`} role="switch" aria-checked={autoFocus && motionEnabled} aria-label={text("모션 자동 포커스", "Motion auto-focus")} disabled={!motionEnabled} onClick={() => setAutoFocus(!autoFocus)}><span /></button></div>
     <span className={`motion-status ${capability.motion}`}>{localizeMessage(capability.message, language)}{eventState === "loading" ? text(" · 카메라별 이벤트 불러오는 중", " · Loading camera events independently") : eventState === "partial" ? text(" · 일부 카메라 이벤트를 불러오지 못했습니다", " · Some camera events could not be loaded") : eventState === "error" ? text(" · 이벤트 요청 오류", " · Event request failed") : ""}</span><button className="ghost" onClick={pinFocus} disabled={!focused.length}>{pinned ? text("포커스 고정 해제", "Unpin focus") : text("포커스 고정", "Pin focus")}</button><button className="ghost" onClick={() => setPrimaryRatio(defaultPrimaryRatio)}>{text("크기 초기화", "Reset size")}</button><details className="favorites-menu"><summary>★ {text("즐겨찾기", "Favorites")} {favorites.length}</summary><div>{favorites.length ? favorites.map((favorite) => <div className="favorite-item" key={favorite.id}><button className="favorite-jump" onClick={() => jumpFavorite(favorite)}><Star weight="fill" /><span>{favorite.cameraId ? cameraTitle(allCameras, favorite.cameraId) : text("전체 카메라", "All cameras")}<small>{new Date(favorite.at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { timeZone: "Asia/Seoul", hour12: false })} KST</small></span></button><button className="favorite-remove" onClick={() => removeFavorite(favorite)} aria-label={text(`${new Date(favorite.at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false })} 즐겨찾기 해제`, `Remove favorite at ${new Date(favorite.at).toLocaleString("en-US", { timeZone: "Asia/Seoul", hour12: false })}`)}>{text("해제", "Remove")}</button></div>) : <p>{text("저장된 시간이 없습니다.", "No saved times.")}</p>}<small className="favorite-retention">{text("해제해도 진행 중이거나 검증된 백업은 유지됩니다.", "Pending and verified archives remain after removal.")}</small></div></details></section>
 	  <section className={`workspace ${capability.motion === "available" ? "" : "events-off"}`}><div><CameraGrid layout={recordingLayout} cameras={cameras} segments={segments} timelinePending={timelinePending} timelineFailed={timelineFailed} master={master} capability={capability} focused={focused} pulses={focus.pulseUntil} primaryCamera={primaryCamera} onPrimary={setPrimaryCamera} primaryRatio={primaryRatio} onPrimaryRatio={setPrimaryRatio} onPrimarySyncing={setPrimarySyncing} layoutSyncing={layoutSyncing} onLayoutSynced={() => setLayoutSyncing(false)} seekRevision={seekRevision} videos={videos} onReady={syncVideo} onMediaMissing={recoverMediaIndex} audibleCamera={audibleCamera} onAudible={setAudio} onFavorite={toggleFavorite} isFavorite={favoriteAt} onPiPStatus={setNotice} fullscreenCamera={fullscreenCamera} onFullscreen={toggleFullscreen} /><Timeline day={date} segments={segments} events={events} favorites={favorites} selectedCameraIds={cameras.map((camera) => camera.id)} master={master} onSeek={seekTo} onDay={changeDate} /></div><EventRail cameras={cameras} capability={capability} events={events} eventState={eventState} onOpen={(event) => seekTo(Date.parse(event.at) / 1000)} /></section>

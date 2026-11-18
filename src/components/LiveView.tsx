@@ -3,7 +3,7 @@ import type HlsInstance from "hls.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { rewindAPI } from "../lib/api";
-import { cameraLabel, liveCameraLimit, resolveCameraSelection, resolveLiveCameraSelection } from "../lib/camera.js";
+import { cameraLabel, cameraLimit, resolveCameraSelection, resolveFullCameraSelection } from "../lib/camera.js";
 import { localizeMessage, useLanguage } from "../lib/i18n";
 import { pipMode, reportDisplayRequest, safeStorageGet, safeStorageSet, toggleAudible } from "../lib/interaction.js";
 import type { LiveCamera, LiveCapability } from "../lib/types";
@@ -16,8 +16,8 @@ type SavedLayout = { version: 1; layout: Layout; primary: string; order: string[
 const storageKey = "shinobi-rewind:live-layout:v1";
 const layoutPresets = [
   ["grid", "3×2", "3×2", 6],
-  ["wide", "4×2", "4×2", liveCameraLimit],
-  ["primary", "주+5", "Primary + 5", 6],
+  ["wide", "4×2", "4×2", cameraLimit],
+  ["primary", "주+5", "Primary + 5", cameraLimit],
   ["quad", "2×2", "2×2", 4],
   ["single", "1대", "Single", 1],
 ] as const;
@@ -80,7 +80,7 @@ export function LiveView({ selected, onSelect, onRecorded, onNotice }: { selecte
   }, []);
 
   const scoped = useMemo(() => {
-    const ids = resolveLiveCameraSelection(cameras, selected);
+    const ids = resolveFullCameraSelection(cameras, selected);
     const byID = new Map(cameras.map((camera) => [camera.id, camera]));
     const allowed = new Set(ids);
     return [...new Set([...order, ...ids])].flatMap((id) => {
@@ -88,13 +88,13 @@ export function LiveView({ selected, onSelect, onRecorded, onNotice }: { selecte
       return camera ? [camera] : [];
     });
   }, [cameras, order, selected]);
-  const wideScope = scoped.length === liveCameraLimit;
+  const wideScope = scoped.length === cameraLimit;
   const preferredLayout = layoutChoice ?? (wideScope ? "wide" : saved?.layout ?? "grid");
   const layout = preferredLayout === "wide" && !wideScope ? "grid" : preferredLayout;
 
   const changeLayout = (next: Layout) => {
     if (next === "wide" && !wideScope) {
-      onSelect(resolveCameraSelection(cameras, [...selected, ...cameras.map((camera) => camera.id)], liveCameraLimit));
+      onSelect(resolveCameraSelection(cameras, [...selected, ...cameras.map((camera) => camera.id)], cameraLimit));
     }
     setLayout(next);
   };
@@ -140,7 +140,7 @@ export function LiveView({ selected, onSelect, onRecorded, onNotice }: { selecte
     <div className="live-toolbar">
       <span className="live-summary">{language === "ko" ? `${visible.length}대 중 ${liveCount}대 LIVE` : `${liveCount} of ${visible.length} LIVE`}{capability.message ? ` · ${localizeMessage(capability.message, language)}` : ""}</span>
       <div className="layout-presets" aria-label={text("실시간 레이아웃", "Live layout")}>
-        {layoutPresets.filter(([value]) => value !== "wide" || cameras.length >= liveCameraLimit).map(([value, ko, en]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => changeLayout(value)} key={value}>{text(ko, en)}</button>)}
+        {layoutPresets.filter(([value]) => (value !== "wide" || cameras.length >= cameraLimit) && (value !== "grid" || !wideScope)).map(([value, ko, en]) => <button type="button" className={layout === value ? "active" : ""} aria-pressed={layout === value} onClick={() => changeLayout(value)} key={value}>{value === "primary" && wideScope ? text("주+6", "Primary + 6") : text(ko, en)}</button>)}
       </div>
       <div className="layout-presets" aria-label={text("실시간 화질", "Live quality")}>
         {([['low', '저화질', 'Low'], ['high', '고화질', 'High']] as const).map(([value, ko, en]) => <button type="button" className={quality === value ? "active" : ""} aria-pressed={quality === value} onClick={() => setQuality(value)} key={value}>{text(ko, en)}</button>)}
@@ -149,8 +149,8 @@ export function LiveView({ selected, onSelect, onRecorded, onNotice }: { selecte
       {capability.available && <button type="button" className="ghost" onClick={playAll}>{text("전체 재생", "Play all")}</button>}
       {failed && <button type="button" className="ghost" onClick={refresh}>{text("목록 다시 확인", "Reload list")}</button>}
     </div>
-    <div ref={gridRef} className={`live-grid live-${layout}`} aria-label={text("실시간 카메라 그리드", "Live camera grid")}>
-      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} preferHlsJS={visible.length === liveCameraLimit} quality={capability.lowQuality ? quality : "high"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
+    <div ref={gridRef} className={`live-grid live-${layout}${wideScope ? " seven-cameras" : ""}`} aria-label={text("실시간 카메라 그리드", "Live camera grid")}>
+      {visible.map((camera, index) => <LiveTile key={camera.id} camera={camera} primary={camera.id === primary} preferHlsJS={visible.length === cameraLimit} quality={capability.lowQuality ? quality : "high"} retryAll={retryAll} enabled={pageVisible && capability.available && capability.transport === "hls"} disabledState={capability.available ? "connecting" : "unavailable"} audible={audible === camera.id} onAudible={() => setAudible((current) => toggleAudible(current, camera.id, camera.hasAudio))} onPrimary={() => promote(camera.id)} onRecorded={onRecorded} onState={(state) => setStatuses((current) => current[camera.id] === state ? current : { ...current, [camera.id]: state })} onNotice={onNotice} onKeyDown={(event) => moveFocus(event, index)} />)}
       {!visible.length && <div className="empty-cameras"><CameraIcon size={32} aria-hidden="true" /><b>{failed ? text("실시간 카메라 목록 확인 불가", "Live camera list unavailable") : text("표시할 카메라가 없습니다.", "No cameras to display.")}</b><small>{localizeMessage(capability.message, language)}</small></div>}
     </div>
   </section>;
