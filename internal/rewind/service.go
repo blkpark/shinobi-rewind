@@ -8,12 +8,10 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -295,28 +293,6 @@ func (s *Service) events(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, events)
 }
 
-// Keep long range responses from occupying all HTTP/1.1 media connections.
-func boundedPlaybackRange(header string) string {
-	const chunkSize = 1024 * 1024
-	rangeValue, ok := strings.CutPrefix(header, "bytes=")
-	if !ok || strings.Contains(rangeValue, ",") {
-		return header
-	}
-	first, last, ok := strings.Cut(rangeValue, "-")
-	start, err := strconv.ParseInt(first, 10, 64)
-	if !ok || err != nil || start < 0 || start > math.MaxInt64-chunkSize {
-		return header
-	}
-	limit := start + chunkSize - 1
-	if last != "" {
-		end, err := strconv.ParseInt(last, 10, 64)
-		if err != nil || end <= limit {
-			return header
-		}
-	}
-	return fmt.Sprintf("bytes=%d-%d", start, limit)
-}
-
 func (s *Service) video(w http.ResponseWriter, r *http.Request) {
 	segment, ok := s.source.Segment(r.PathValue("id"))
 	if !ok {
@@ -339,9 +315,6 @@ func (s *Service) video(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, header := range []string{"Range", "If-Range"} {
 		if value := r.Header.Get(header); value != "" {
-			if header == "Range" && r.Method == http.MethodGet && r.URL.Query().Get("bounded") == "1" {
-				value = boundedPlaybackRange(value)
-			}
 			req.Header.Set(header, value)
 		}
 	}

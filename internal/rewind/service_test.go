@@ -99,36 +99,6 @@ func TestVideoProxyForwardsRangeIfRangeAndStreamingStatus(t *testing.T) {
 	}
 }
 
-func TestVideoProxyOnlyBoundsOptedInPlayback(t *testing.T) {
-	for _, tc := range []struct{ query, requested, forwarded string }{
-		{"?bounded=1", "bytes=100-", "bytes=100-1048675"},
-		{"?bounded=1", "bytes=0-2000000", "bytes=0-1048575"},
-		{"?bounded=1", "bytes=0-1", "bytes=0-1"},
-		{"?bounded=1", "bytes=-100", "bytes=-100"},
-		{"?bounded=1", "bytes=0-1,100-", "bytes=0-1,100-"},
-		{"?bounded=1", "bytes=9223372036854775807-", "bytes=9223372036854775807-"},
-		{"", "bytes=100-", "bytes=100-"},
-	} {
-		t.Run(tc.query+tc.requested, func(t *testing.T) {
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if got := r.Header.Get("Range"); got != tc.forwarded {
-					t.Errorf("range = %q, want %q", got, tc.forwarded)
-				}
-				w.WriteHeader(http.StatusPartialContent)
-			}))
-			defer upstream.Close()
-			service := newTestService(Segment{ID: "safe", State: "recorded", Source: upstream.URL})
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/videos/safe"+tc.query, nil)
-			req.Header.Set("Range", tc.requested)
-			res := httptest.NewRecorder()
-			service.Handler().ServeHTTP(res, req)
-			if res.Code != http.StatusPartialContent {
-				t.Fatalf("status = %d", res.Code)
-			}
-		})
-	}
-}
-
 func TestVideoProxyHead200And416(t *testing.T) {
 	for _, status := range []int{http.StatusOK, http.StatusRequestedRangeNotSatisfiable} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
